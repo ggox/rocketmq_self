@@ -20,20 +20,27 @@
  */
 package org.apache.rocketmq.common.namesrv;
 
-import java.io.File;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+import java.io.File;
+
 public class NamesrvConfig {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
 
+    // rocketMq 家目录
     private String rocketmqHome = System.getProperty(MixAll.ROCKETMQ_HOME_PROPERTY, System.getenv(MixAll.ROCKETMQ_HOME_ENV));
+    // kv 配置文件路径
     private String kvConfigPath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "kvConfig.json";
+    // 存储配置路径
     private String configStorePath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "namesrv.properties";
+    // 生产环境名称
     private String productEnvName = "center";
+    // 集群测试 默认关
     private boolean clusterTest = false;
+    // 有序消息 默认关
     private boolean orderMessageEnable = false;
 
     public boolean isOrderMessageEnable() {
