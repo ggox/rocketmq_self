@@ -102,6 +102,7 @@ public class Configuration {
             readWriteLock.writeLock().lockInterruptibly();
 
             try {
+                // 合并配置
                 merge(extProperties, this.allConfigs);
             } finally {
                 readWriteLock.writeLock().unlock();

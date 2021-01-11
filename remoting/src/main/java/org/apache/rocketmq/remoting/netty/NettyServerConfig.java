@@ -21,11 +21,13 @@ public class NettyServerConfig implements Cloneable {
     private int listenPort = 8888;
     // 工作线程数
     private int serverWorkerThreads = 8;
-    // 回调线程数
+    // public 线程数 没有绑定到特定线程池的请求任务，都用这个线程池处理
     private int serverCallbackExecutorThreads = 0;
     // eventLoop 线程数，即 io 线程数
     private int serverSelectorThreads = 3;
+    // send oneway 消息请求并发度（Broker端参数）
     private int serverOnewaySemaphoreValue = 256;
+    // 异步消息发送最大并发度（Broker端参数）
     private int serverAsyncSemaphoreValue = 64;
     private int serverChannelMaxIdleTimeSeconds = 120;
 
