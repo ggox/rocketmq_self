@@ -165,8 +165,9 @@ public class NamesrvController {
     }
 
     public void start() throws Exception {
+        // netty 服务启动
         this.remotingServer.start();
-
+        // 如果文件监听服务不为null，则启动
         if (this.fileWatchService != null) {
             this.fileWatchService.start();
         }

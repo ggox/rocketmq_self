@@ -183,6 +183,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
 
     @Override
     public void start() {
+        // 业务线程池
         this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(
             nettyServerConfig.getServerWorkerThreads(),
             new ThreadFactory() {
@@ -195,8 +196,10 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                 }
             });
 
+        // 准备可以共享的handler
         prepareSharableHandlers();
 
+        // netty 代码
         ServerBootstrap childHandler =
             this.serverBootstrap.group(this.eventLoopGroupBoss, this.eventLoopGroupSelector)
                 .channel(useEpoll() ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
@@ -222,6 +225,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                     }
                 });
 
+        // 是否使用池化内存
         if (nettyServerConfig.isServerPooledByteBufAllocatorEnable()) {
             childHandler.childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
         }
@@ -238,6 +242,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             this.nettyEventExecutor.start();
         }
 
+        // 扫描响应表
         this.timer.scheduleAtFixedRate(new TimerTask() {
 
             @Override
@@ -345,9 +350,13 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     }
 
     private void prepareSharableHandlers() {
+        // tls 握手处理
         handshakeHandler = new HandshakeHandler(TlsSystemConfig.tlsMode);
+        // 编码器
         encoder = new NettyEncoder();
+        // 连接管理器
         connectionManageHandler = new NettyConnectManageHandler();
+        // 业务handler
         serverHandler = new NettyServerHandler();
     }
 
