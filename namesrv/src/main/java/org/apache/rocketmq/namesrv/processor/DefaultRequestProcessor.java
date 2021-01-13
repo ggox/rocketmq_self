@@ -89,11 +89,15 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
                 return this.deleteKVConfig(ctx, request);
             case RequestCode.QUERY_DATA_VERSION:
                 return queryBrokerTopicConfig(ctx, request);
+            // 注册broker，也即broker与nameserver的心跳消息处理
             case RequestCode.REGISTER_BROKER:
+                // 获取版本
                 Version brokerVersion = MQVersion.value2Version(request.getVersion());
+                // 高于 3.0.11 版本
                 if (brokerVersion.ordinal() >= MQVersion.Version.V3_0_11.ordinal()) {
+                    // 提供了filterServer的支持
                     return this.registerBrokerWithFilterServer(ctx, request);
-                } else {
+                } else { // 旧版本兼容
                     return this.registerBroker(ctx, request);
                 }
             case RequestCode.UNREGISTER_BROKER:
@@ -194,11 +198,14 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
 
     public RemotingCommand registerBrokerWithFilterServer(ChannelHandlerContext ctx, RemotingCommand request)
         throws RemotingCommandException {
+        // 初始化一个system_error的response
         final RemotingCommand response = RemotingCommand.createResponseCommand(RegisterBrokerResponseHeader.class);
         final RegisterBrokerResponseHeader responseHeader = (RegisterBrokerResponseHeader) response.readCustomHeader();
         final RegisterBrokerRequestHeader requestHeader =
+            // 解码请求的CustomHeader
             (RegisterBrokerRequestHeader) request.decodeCommandCustomHeader(RegisterBrokerRequestHeader.class);
 
+        // 校验和检测未通过
         if (!checksum(ctx, request, requestHeader)) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("crc32 not match");
@@ -239,6 +246,7 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
         return response;
     }
 
+    // 校验和 采用cyc32
     private boolean checksum(ChannelHandlerContext ctx, RemotingCommand request,
         RegisterBrokerRequestHeader requestHeader) {
         if (requestHeader.getBodyCrc32() != 0) {

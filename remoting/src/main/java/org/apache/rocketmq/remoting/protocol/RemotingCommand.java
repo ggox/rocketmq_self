@@ -223,6 +223,7 @@ public class RemotingCommand {
         return result;
     }
 
+    // 标记为 response
     public void markResponseType() {
         int bits = 1 << RPC_TYPE;
         this.flag |= bits;
@@ -251,12 +252,15 @@ public class RemotingCommand {
 
             Field[] fields = getClazzFields(classHeader);
             for (Field field : fields) {
+                // 过滤静态字段
                 if (!Modifier.isStatic(field.getModifiers())) {
                     String fieldName = field.getName();
+                    // 过滤this开头的字段
                     if (!fieldName.startsWith("this")) {
                         try {
                             String value = this.extFields.get(fieldName);
                             if (null == value) {
+                                // 校验是否允许null
                                 if (!isFieldNullable(field)) {
                                     throw new RemotingCommandException("the custom field <" + fieldName + "> is null");
                                 }
@@ -267,6 +271,7 @@ public class RemotingCommand {
                             String type = getCanonicalName(field.getType());
                             Object valueParsed;
 
+                            // 类型处理
                             if (type.equals(STRING_CANONICAL_NAME)) {
                                 valueParsed = value;
                             } else if (type.equals(INTEGER_CANONICAL_NAME_1) || type.equals(INTEGER_CANONICAL_NAME_2)) {
@@ -281,6 +286,7 @@ public class RemotingCommand {
                                 throw new RemotingCommandException("the custom field <" + fieldName + "> type is not supported");
                             }
 
+                            // 通过反射设置值
                             field.set(objectHeader, valueParsed);
 
                         } catch (Throwable e) {
@@ -290,6 +296,7 @@ public class RemotingCommand {
                 }
             }
 
+            // 校验字段
             objectHeader.checkFields();
         }
 

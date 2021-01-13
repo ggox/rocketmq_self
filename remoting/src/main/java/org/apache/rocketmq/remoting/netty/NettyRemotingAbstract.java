@@ -197,23 +197,33 @@ public abstract class NettyRemotingAbstract {
         final Pair<NettyRequestProcessor, ExecutorService> matched = this.processorTable.get(cmd.getCode());
         // 如果没有找到匹配的处理器，则使用默认处理器
         final Pair<NettyRequestProcessor, ExecutorService> pair = null == matched ? this.defaultRequestProcessor : matched;
+
+        // 请求序号
         final int opaque = cmd.getOpaque();
 
         if (pair != null) {
+            // new一个任务
             Runnable run = new Runnable() {
                 @Override
                 public void run() {
                     try {
+                        // 回调rpcHook的doBeforeRequest,一种扩展点
                         doBeforeRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd);
+                        // new 一个 callback
                         final RemotingResponseCallback callback = new RemotingResponseCallback() {
                             @Override
                             public void callback(RemotingCommand response) {
+                                // 回调rpcHook的doAfterResponse方法
                                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
+                                // 如果不是 oneway rpc，需要返回response
                                 if (!cmd.isOnewayRPC()) {
                                     if (response != null) {
+                                        // 设置请求序号，关联RemotingCommand
                                         response.setOpaque(opaque);
+                                        // 标记为responseType
                                         response.markResponseType();
                                         try {
+                                            // 写回response
                                             ctx.writeAndFlush(response);
                                         } catch (Throwable e) {
                                             log.error("process request over, but response failed", e);
@@ -225,10 +235,11 @@ public abstract class NettyRemotingAbstract {
                                 }
                             }
                         };
+                        // 如果是异步处理器则调用asyncProcessRequest，将上面的callback传进去
                         if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {
                             AsyncNettyRequestProcessor processor = (AsyncNettyRequestProcessor)pair.getObject1();
                             processor.asyncProcessRequest(ctx, cmd, callback);
-                        } else {
+                        } else { // 否则就是同步processor，处理完同步调用callback的callback()方法
                             NettyRequestProcessor processor = pair.getObject1();
                             RemotingCommand response = processor.processRequest(ctx, cmd);
                             callback.callback(response);
@@ -237,6 +248,7 @@ public abstract class NettyRemotingAbstract {
                         log.error("process request exception", e);
                         log.error(cmd.toString());
 
+                        // 回复错误信息
                         if (!cmd.isOnewayRPC()) {
                             final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_ERROR,
                                 RemotingHelper.exceptionSimpleDesc(e));
@@ -247,7 +259,9 @@ public abstract class NettyRemotingAbstract {
                 }
             };
 
+            // 先判断是否拒绝请求（流控）
             if (pair.getObject1().rejectRequest()) {
+                // 返回服务繁忙，启动流控
                 final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_BUSY,
                     "[REJECTREQUEST]system busy, start flow control for a while");
                 response.setOpaque(opaque);
@@ -256,17 +270,19 @@ public abstract class NettyRemotingAbstract {
             }
 
             try {
+                // 将上面的Runnable包装成RequestTask
                 final RequestTask requestTask = new RequestTask(run, ctx.channel(), cmd);
+                // 使用处理器关联的线程池异步执行
                 pair.getObject2().submit(requestTask);
-            } catch (RejectedExecutionException e) {
-                if ((System.currentTimeMillis() % 10000) == 0) {
+            } catch (RejectedExecutionException e) { // 队列满了，拒绝执行时
+                if ((System.currentTimeMillis() % 10000) == 0) { // 抽样打印
                     log.warn(RemotingHelper.parseChannelRemoteAddr(ctx.channel())
                         + ", too many requests and system thread pool busy, RejectedExecutionException "
                         + pair.getObject2().toString()
                         + " request code: " + cmd.getCode());
                 }
 
-                if (!cmd.isOnewayRPC()) {
+                if (!cmd.isOnewayRPC()) { // 返回系统busy
                     final RemotingCommand response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_BUSY,
                         "[OVERLOAD]system busy, start flow control for a while");
                     response.setOpaque(opaque);
@@ -275,6 +291,7 @@ public abstract class NettyRemotingAbstract {
             }
         } else {
             String error = " request type " + cmd.getCode() + " not supported";
+            // 返回请求不支持
             final RemotingCommand response =
                 RemotingCommand.createResponseCommand(RemotingSysResponseCode.REQUEST_CODE_NOT_SUPPORTED, error);
             response.setOpaque(opaque);
