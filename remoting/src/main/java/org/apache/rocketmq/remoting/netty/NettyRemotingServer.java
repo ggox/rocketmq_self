@@ -199,17 +199,17 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         // 准备可以共享的handler
         prepareSharableHandlers();
 
-        // netty 代码
+        // netty 代码，rocketMq 采用的业务线程模型 1 + N + M + X: 1个boss线程，N个io线程，M个工作线程（defaultEventExecutorGroup），用于处理各个handler,X 是指实际处理请求时还会根据请求名称使用特定的线程池，如果没有注册则使用public线程池
         ServerBootstrap childHandler =
             this.serverBootstrap.group(this.eventLoopGroupBoss, this.eventLoopGroupSelector)
                 .channel(useEpoll() ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
-                .option(ChannelOption.SO_BACKLOG, 1024)
-                .option(ChannelOption.SO_REUSEADDR, true)
-                .option(ChannelOption.SO_KEEPALIVE, false)
-                .childOption(ChannelOption.TCP_NODELAY, true)
-                .childOption(ChannelOption.SO_SNDBUF, nettyServerConfig.getServerSocketSndBufSize())
-                .childOption(ChannelOption.SO_RCVBUF, nettyServerConfig.getServerSocketRcvBufSize())
-                .localAddress(new InetSocketAddress(this.nettyServerConfig.getListenPort()))
+                .option(ChannelOption.SO_BACKLOG, 1024) // 全链接队列，系统调用listen的第二个参数
+                .option(ChannelOption.SO_REUSEADDR, true) // 主要作用：让端口释放后立即就可以被再次使用
+                .option(ChannelOption.SO_KEEPALIVE, false) // 关闭tcp自带的keepalive机制，因为直接在应用层实现了心跳监测机制
+                .childOption(ChannelOption.TCP_NODELAY, true) // 禁用Nagle算法，允许小包发送
+                .childOption(ChannelOption.SO_SNDBUF, nettyServerConfig.getServerSocketSndBufSize()) // 发送缓冲区大小 默认64k
+                .childOption(ChannelOption.SO_RCVBUF, nettyServerConfig.getServerSocketRcvBufSize()) // 接收缓冲区大小 默认64k
+                .localAddress(new InetSocketAddress(this.nettyServerConfig.getListenPort())) // 设置本地监听端口
                 .childHandler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     public void initChannel(SocketChannel ch) throws Exception {
@@ -238,11 +238,12 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             throw new RuntimeException("this.serverBootstrap.bind().sync() InterruptedException", e1);
         }
 
+        // 如果有注册事件监听器，则启动事件处理线程
         if (this.channelEventListener != null) {
             this.nettyEventExecutor.start();
         }
 
-        // 扫描响应表
+        // 每隔1秒扫描响应表
         this.timer.scheduleAtFixedRate(new TimerTask() {
 
             @Override
@@ -294,17 +295,19 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    // 注册处理器（包括执行处理器的线程池）
     @Override
     public void registerProcessor(int requestCode, NettyRequestProcessor processor, ExecutorService executor) {
         ExecutorService executorThis = executor;
-        if (null == executor) {
+        if (null == executor) { // 如果没有设置线程池，则使用 public 线程池
             executorThis = this.publicExecutor;
         }
-
+        // 处理器+线程池的pair
         Pair<NettyRequestProcessor, ExecutorService> pair = new Pair<NettyRequestProcessor, ExecutorService>(processor, executorThis);
         this.processorTable.put(requestCode, pair);
     }
 
+    // 注册默认处理器
     @Override
     public void registerDefaultProcessor(NettyRequestProcessor processor, ExecutorService executor) {
         this.defaultRequestProcessor = new Pair<NettyRequestProcessor, ExecutorService>(processor, executor);
@@ -419,6 +422,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             }
 
             // Hand over this message to the next .
+            // 传递消息下去，因为 SimpleChannelInboundHandler 默认会自动释放 msg 的引用，所以这里增加了一次引用
             ctx.fireChannelRead(msg.retain());
         }
     }
@@ -436,6 +440,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     class NettyConnectManageHandler extends ChannelDuplexHandler {
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+            // 打印一下远程地址
             final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
             log.info("NETTY SERVER PIPELINE: channelRegistered {}", remoteAddress);
             super.channelRegistered(ctx);
@@ -454,7 +459,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             log.info("NETTY SERVER PIPELINE: channelActive, the channel[{}]", remoteAddress);
             super.channelActive(ctx);
 
+            // 如果存在连接监听器
             if (NettyRemotingServer.this.channelEventListener != null) {
+                // 发送连接事件，大致过程：入队 -> 然后循环处理事件 -> 回调 channelEventListener
                 NettyRemotingServer.this.putNettyEvent(new NettyEvent(NettyEventType.CONNECT, remoteAddress, ctx.channel()));
             }
         }
@@ -474,6 +481,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
             if (evt instanceof IdleStateEvent) {
                 IdleStateEvent event = (IdleStateEvent) evt;
+                // 连接空闲超时了，关闭连接并发送相关事件
                 if (event.state().equals(IdleState.ALL_IDLE)) {
                     final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
                     log.warn("NETTY SERVER PIPELINE: IDLE exception [{}]", remoteAddress);
