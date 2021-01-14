@@ -61,6 +61,7 @@ public class BrokerStartup {
     public static BrokerController start(BrokerController controller) {
         try {
 
+            // 启动broker控制器
             controller.start();
 
             String tip = "The broker[" + controller.getBrokerConfig().getBrokerName() + ", "
@@ -87,13 +88,17 @@ public class BrokerStartup {
         }
     }
 
+    // 创建BrokerController
     public static BrokerController createBrokerController(String[] args) {
+        // 设置版本
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
 
+        // 发送缓冲区 默认128k,覆盖内部默认的64k
         if (null == System.getProperty(NettySystemConfig.COM_ROCKETMQ_REMOTING_SOCKET_SNDBUF_SIZE)) {
             NettySystemConfig.socketSndbufSize = 131072;
         }
 
+        // 接收缓冲区 默认128k
         if (null == System.getProperty(NettySystemConfig.COM_ROCKETMQ_REMOTING_SOCKET_RCVBUF_SIZE)) {
             NettySystemConfig.socketRcvbufSize = 131072;
         }
@@ -107,16 +112,24 @@ public class BrokerStartup {
                 System.exit(-1);
             }
 
+            // Broker核心配置类
             final BrokerConfig brokerConfig = new BrokerConfig();
+            // 作为服务端的网络配置
             final NettyServerConfig nettyServerConfig = new NettyServerConfig();
+            // 作为客户端的网络配置
             final NettyClientConfig nettyClientConfig = new NettyClientConfig();
 
+            // 是否使用tls
             nettyClientConfig.setUseTLS(Boolean.parseBoolean(System.getProperty(TLS_ENABLE,
                 String.valueOf(TlsSystemConfig.tlsMode == TlsMode.ENFORCING))));
+            // broker服务默认监听端口10911
             nettyServerConfig.setListenPort(10911);
+
+            // 消息存储配置
             final MessageStoreConfig messageStoreConfig = new MessageStoreConfig();
 
             if (BrokerRole.SLAVE == messageStoreConfig.getBrokerRole()) {
+                // 访问消息在内存中的占比，如果是SLAVE，减少10%
                 int ratio = messageStoreConfig.getAccessMessageInMemoryMaxRatio() - 10;
                 messageStoreConfig.setAccessMessageInMemoryMaxRatio(ratio);
             }
@@ -182,7 +195,10 @@ public class BrokerStartup {
                 brokerConfig.setBrokerId(-1);
             }
 
+            // ha服务的监听端口默认是服务端口+1
             messageStoreConfig.setHaListenPort(nettyServerConfig.getListenPort() + 1);
+
+            // logback日志重置
             LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
             JoranConfigurator configurator = new JoranConfigurator();
             configurator.setContext(lc);
@@ -216,15 +232,17 @@ public class BrokerStartup {
                 nettyServerConfig,
                 nettyClientConfig,
                 messageStoreConfig);
-            // remember all configs to prevent discard
+            // remember all configs to prevent discard 将命令行的配置注册到Configuration中
             controller.getConfiguration().registerConfig(properties);
 
+            // broker控制器初始化方法
             boolean initResult = controller.initialize();
             if (!initResult) {
                 controller.shutdown();
                 System.exit(-3);
             }
 
+            // 注册关闭钩子
             Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
                 private volatile boolean hasShutdown = false;
                 private AtomicInteger shutdownTimes = new AtomicInteger(0);
