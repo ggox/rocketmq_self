@@ -18,6 +18,14 @@
 package org.apache.rocketmq.common.protocol.body;
 
 import com.alibaba.fastjson.JSON;
+import org.apache.rocketmq.common.DataVersion;
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -30,13 +38,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
-import org.apache.rocketmq.common.DataVersion;
-import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.TopicConfig;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
-import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
 public class RegisterBrokerBody extends RemotingSerializable {
 
@@ -97,42 +98,53 @@ public class RegisterBrokerBody extends RemotingSerializable {
 
     public static RegisterBrokerBody decode(byte[] data, boolean compressed) throws IOException {
         if (!compressed) {
+            // json 反序列化
             return RegisterBrokerBody.decode(data, RegisterBrokerBody.class);
         }
         long start = System.currentTimeMillis();
         InflaterInputStream inflaterInputStream = new InflaterInputStream(new ByteArrayInputStream(data));
+        // 读取4个直接的数据版本号长度
         int dataVersionLength = readInt(inflaterInputStream);
+        // 读取数据版本
         byte[] dataVersionBytes = readBytes(inflaterInputStream, dataVersionLength);
+        // 版本号解码
         DataVersion dataVersion = DataVersion.decode(dataVersionBytes, DataVersion.class);
 
         RegisterBrokerBody registerBrokerBody = new RegisterBrokerBody();
+        // 设置版本
         registerBrokerBody.getTopicConfigSerializeWrapper().setDataVersion(dataVersion);
         ConcurrentMap<String, TopicConfig> topicConfigTable = registerBrokerBody.getTopicConfigSerializeWrapper().getTopicConfigTable();
 
+        // 读取 topic 数量
         int topicConfigNumber = readInt(inflaterInputStream);
         LOGGER.debug("{} topic configs to extract", topicConfigNumber);
 
         for (int i = 0; i < topicConfigNumber; i++) {
+            // topic config 长度
             int topicConfigJsonLength = readInt(inflaterInputStream);
-
+            // 读取内容
             byte[] buffer = readBytes(inflaterInputStream, topicConfigJsonLength);
             TopicConfig topicConfig = new TopicConfig();
             String topicConfigJson = new String(buffer, MixAll.DEFAULT_CHARSET);
+            // 解码
             topicConfig.decode(topicConfigJson);
+            // set到topicConfigTable中，key为topicName
             topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
 
+        // 读取filterServer数据长度
         int filterServerListJsonLength = readInt(inflaterInputStream);
-
+        // 相同套路，读取内容
         byte[] filterServerListBuffer = readBytes(inflaterInputStream, filterServerListJsonLength);
         String filterServerListJson = new String(filterServerListBuffer, MixAll.DEFAULT_CHARSET);
         List<String> filterServerList = new ArrayList<String>();
         try {
+            // json数组反序列化
             filterServerList = JSON.parseArray(filterServerListJson, String.class);
         } catch (Exception e) {
             LOGGER.error("Decompressing occur Exception {}", filterServerListJson);
         }
-
+        // 设置filterServerList
         registerBrokerBody.setFilterServerList(filterServerList);
         long interval = System.currentTimeMillis() - start;
         if (interval > 50) {
