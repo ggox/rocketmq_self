@@ -16,9 +16,6 @@
  */
 package org.apache.rocketmq.client.producer;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
 import org.apache.rocketmq.client.ClientConfig;
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.Validators;
@@ -43,6 +40,10 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+
 /**
  * This class is the entry point for applications intending to send messages. </p>
  *
@@ -66,7 +67,10 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * Producer group conceptually aggregates all producer instances of exactly same role, which is particularly
      * important when transactional messages are involved. </p>
      *
+     * // 生产者所属组，事物消息的场景下很重要，事物消息回查状态时会从该组中随机选择一个进行回查
+     *
      * For non-transactional messages, it does not matter as long as it's unique per process. </p>
+     * 一个进程producerGroup保证唯一就没问题
      *
      * See {@linktourl http://rocketmq.apache.org/docs/core-concept/} for more discussion.
      */
@@ -79,16 +83,19 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
 
     /**
      * Number of queues to create per default topic.
+     * 主题默认队列数量
      */
     private volatile int defaultTopicQueueNums = 4;
 
     /**
      * Timeout for sending messages.
+     * 消息发送默认超时时间 3秒
      */
     private int sendMsgTimeout = 3000;
 
     /**
      * Compress message body threshold, namely, message body larger than 4k will be compressed on default.
+     * 消息启用压缩的阈值，默认4k，即消息体超过4k消息便会压缩
      */
     private int compressMsgBodyOverHowmuch = 1024 * 4;
 
@@ -96,6 +103,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * Maximum number of retry to perform internally before claiming sending failure in synchronous mode. </p>
      *
      * This may potentially cause message duplication which is up to application developers to resolve.
+     * 同步消息发送重试次数，默认2次，总共执行3次（如果都不成功的话）
      */
     private int retryTimesWhenSendFailed = 2;
 
@@ -103,21 +111,25 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * Maximum number of retry to perform internally before claiming sending failure in asynchronous mode. </p>
      *
      * This may potentially cause message duplication which is up to application developers to resolve.
+     * 异步消息重试次数，同上
      */
     private int retryTimesWhenSendAsyncFailed = 2;
 
     /**
      * Indicate whether to retry another broker on sending failure internally.
+     * 消息发送失败重试时是否需要选择另一个broker
      */
     private boolean retryAnotherBrokerWhenNotStoreOK = false;
 
     /**
      * Maximum allowed message size in bytes.
+     * 允许发送的最大消息长度，默认4M
      */
     private int maxMessageSize = 1024 * 1024 * 4; // 4M
 
     /**
      * Interface of asynchronous transfer data
+     * 异步传输数据接口
      */
     private TraceDispatcher traceDispatcher = null;
 
@@ -160,11 +172,13 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
         this.producerGroup = producerGroup;
         defaultMQProducerImpl = new DefaultMQProducerImpl(this, rpcHook);
         //if client open the message trace feature
+        // 开启消息跟踪
         if (enableMsgTrace) {
             try {
                 AsyncTraceDispatcher dispatcher = new AsyncTraceDispatcher(producerGroup, TraceDispatcher.Type.PRODUCE, customizedTraceTopic, rpcHook);
                 dispatcher.setHostProducer(this.defaultMQProducerImpl);
                 traceDispatcher = dispatcher;
+                // 注册消息发送钩子
                 this.defaultMQProducerImpl.registerSendMessageHook(
                     new SendMessageTraceHookImpl(traceDispatcher));
             } catch (Throwable e) {
@@ -267,9 +281,12 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * @throws MQClientException if there is any unexpected error.
      */
     @Override
-    public void start() throws MQClientException {
+    public void start() throws MQClientException { // 生产者启动方法
+        // 为 producerGroup 包装命名空间
         this.setProducerGroup(withNamespace(this.producerGroup));
+        // 启动内部依赖的defaultMQProducerImpl
         this.defaultMQProducerImpl.start();
+        // 异步数据传输接口不为null，就启动之
         if (null != traceDispatcher) {
             try {
                 traceDispatcher.start(this.getNamesrvAddr(), this.getAccessChannel());
@@ -292,6 +309,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
 
     /**
      * Fetch message queues of topic <code>topic</code>, to which we may send/publish messages.
+     * 查找该主题下所有消息队列
      *
      * @param topic Topic to fetch.
      * @return List of message queues readily to send messages to
@@ -772,6 +790,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
 
     /**
      * Search consume queue offset of the given time stamp.
+     * 根据时间戳查找消费队列的偏移量
      *
      * @param mq Instance of MessageQueue
      * @param timestamp from when in milliseconds.
@@ -785,6 +804,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
 
     /**
      * Query maximum offset of the given message queue.
+     * 返回最大偏移量
      *
      * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
      *
@@ -800,6 +820,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
 
     /**
      * Query minimum offset of the given message queue.
+     * 返回最小偏移量
      *
      * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
      *

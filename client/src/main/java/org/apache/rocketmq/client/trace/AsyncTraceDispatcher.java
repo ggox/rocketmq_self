@@ -16,19 +16,6 @@
  */
 package org.apache.rocketmq.client.trace;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.AccessChannel;
 import org.apache.rocketmq.client.common.ThreadLocalIndex;
@@ -49,12 +36,28 @@ import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.RPCHook;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
 import static org.apache.rocketmq.client.trace.TraceConstants.TRACE_INSTANCE_NAME;
 
 public class AsyncTraceDispatcher implements TraceDispatcher {
 
     private final static InternalLogger log = ClientLogger.getLog();
+    // 队列大小
     private final int queueSize;
+    // 批量大小
     private final int batchSize;
     private final int maxMsgSize;
     private final DefaultMQProducer traceProducer;
@@ -62,6 +65,7 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
     // The last discard number of log
     private AtomicLong discardCount;
     private Thread worker;
+    // trace上下文队列
     private ArrayBlockingQueue<TraceContext> traceContextQueue;
     private ArrayBlockingQueue<Runnable> appenderQueue;
     private volatile Thread shutDownHook;
@@ -86,6 +90,7 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
         this.group = group;
         this.type = type;
 
+        // 线程池队列
         this.appenderQueue = new ArrayBlockingQueue<Runnable>(queueSize);
         if (!UtilAll.isBlank(traceTopicName)) {
             this.traceTopicName = traceTopicName;
@@ -240,7 +245,7 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
         public void run() {
             while (!stopped) {
                 List<TraceContext> contexts = new ArrayList<TraceContext>(batchSize);
-                for (int i = 0; i < batchSize; i++) {
+                for (int i = 0; i < batchSize; i++) { // 每次最多处理 batchSize 个 TraceContext
                     TraceContext context = null;
                     try {
                         //get trace data element from blocking Queue — traceContextQueue
@@ -255,6 +260,7 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
                 }
                 if (contexts.size() > 0) {
                     AsyncAppenderRequest request = new AsyncAppenderRequest(contexts);
+                    // 提交线程池异步发送traceData
                     traceExecutor.submit(request);
                 } else if (AsyncTraceDispatcher.this.stopped) {
                     this.stopped = true;
@@ -332,7 +338,7 @@ public class AsyncTraceDispatcher implements TraceDispatcher {
                 buffer.append(bean.getTransData());
                 count++;
                 // Ensure that the size of the package should not exceed the upper limit.
-                if (buffer.length() >= traceProducer.getMaxMessageSize()) {
+                if (buffer.length() >= traceProducer.getMaxMessageSize()) { // 如果超过了最大消息大小，触发send
                     sendTraceDataByMQ(keySet, buffer.toString(), dataTopic, regionId);
                     // Clear temporary buffer after finishing
                     buffer.delete(0, buffer.length());

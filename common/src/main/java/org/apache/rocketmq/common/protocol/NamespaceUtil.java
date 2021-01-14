@@ -81,11 +81,13 @@ public class NamespaceUtil {
         return resourceWithNamespace;
     }
 
+    // 包装namespace（命名空间）
     public static String wrapNamespace(String namespace, String resourceWithOutNamespace) {
         if (StringUtils.isEmpty(namespace) || StringUtils.isEmpty(resourceWithOutNamespace)) {
             return resourceWithOutNamespace;
         }
 
+        // 判断是否系统资源或者是否已经被namespace包装过了
         if (isSystemResource(resourceWithOutNamespace) || isAlreadyWithNamespace(resourceWithOutNamespace, namespace)) {
             return resourceWithOutNamespace;
         }
@@ -110,6 +112,7 @@ public class NamespaceUtil {
             return false;
         }
 
+        // 去除重试和死信主题的前缀
         String resourceWithoutRetryAndDLQ = withOutRetryAndDLQ(resource);
 
         return resourceWithoutRetryAndDLQ.startsWith(namespace + NAMESPACE_SEPARATOR);
@@ -140,10 +143,13 @@ public class NamespaceUtil {
         if (StringUtils.isEmpty(originalResource)) {
             return STRING_BLANK;
         }
+
+        // 是否重试主题 %RETRY% 开头
         if (isRetryTopic(originalResource)) {
             return originalResource.substring(RETRY_PREFIX_LENGTH);
         }
 
+        // 是否死信主题 %DLQ 开头
         if (isDLQTopic(originalResource)) {
             return originalResource.substring(DLQ_PREFIX_LENGTH);
         }
@@ -151,11 +157,13 @@ public class NamespaceUtil {
         return originalResource;
     }
 
+    // 是否系统资源
     private static boolean isSystemResource(String resource) {
         if (StringUtils.isEmpty(resource)) {
             return false;
         }
 
+        // 判断是不是系统主题或者系统消费组
         if (TopicValidator.isSystemTopic(resource) || MixAll.isSysConsumerGroup(resource)) {
             return true;
         }
