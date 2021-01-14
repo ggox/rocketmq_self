@@ -17,14 +17,15 @@
 
 package org.apache.rocketmq.client;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.topic.TopicValidator;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Common Validator
@@ -83,8 +84,9 @@ public class Validators {
         if (null == msg) {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message is null");
         }
-        // topic
+        // topic 格式合法性校验
         Validators.checkTopic(msg.getTopic());
+        // 是否不允许发送
         Validators.isNotAllowedSendTopic(msg.getTopic());
 
         // body
@@ -96,6 +98,7 @@ public class Validators {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message body length is zero");
         }
 
+        // 消息大小校验
         if (msg.getBody().length > defaultMQProducer.getMaxMessageSize()) {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL,
                 "the message body size over max value, MAX: " + defaultMQProducer.getMaxMessageSize());

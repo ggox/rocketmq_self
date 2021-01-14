@@ -553,6 +553,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     }
 
+    // 消息发送通用方法 支持同步模式和异步模式
     private SendResult sendDefaultImpl(
         Message msg,
         final CommunicationMode communicationMode,
@@ -1351,6 +1352,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     public SendResult send(Message msg,
         long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        // 同步模式
         return this.sendDefaultImpl(msg, CommunicationMode.SYNC, null, timeout);
     }
 
