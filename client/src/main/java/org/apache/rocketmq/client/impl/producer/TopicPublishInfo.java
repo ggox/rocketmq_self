@@ -16,18 +16,24 @@
  */
 package org.apache.rocketmq.client.impl.producer;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.rocketmq.client.common.ThreadLocalIndex;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class TopicPublishInfo {
+    // 是否顺序消费
     private boolean orderTopic = false;
+    // 是否含有路由信息
     private boolean haveTopicRouterInfo = false;
+    // 消息队列
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
+    // 发送到具体哪个queue的index
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
+    // 路由信息
     private TopicRouteData topicRouteData;
 
     public boolean isOrderTopic() {
@@ -76,6 +82,7 @@ public class TopicPublishInfo {
                 if (pos < 0)
                     pos = 0;
                 MessageQueue mq = this.messageQueueList.get(pos);
+                // 优先选择brokerName与上次不同的队列
                 if (!mq.getBrokerName().equals(lastBrokerName)) {
                     return mq;
                 }
@@ -84,6 +91,7 @@ public class TopicPublishInfo {
         }
     }
 
+    // 简单的取模然后获取队列，基本属于轮训的方式
     public MessageQueue selectOneMessageQueue() {
         int index = this.sendWhichQueue.getAndIncrement();
         int pos = Math.abs(index) % this.messageQueueList.size();

@@ -17,12 +17,13 @@
 
 package org.apache.rocketmq.client.latency;
 
+import org.apache.rocketmq.client.common.ThreadLocalIndex;
+
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.rocketmq.client.common.ThreadLocalIndex;
 
 public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> {
     private final ConcurrentHashMap<String, FaultItem> faultItemTable = new ConcurrentHashMap<String, FaultItem>(16);
@@ -37,6 +38,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
             faultItem.setCurrentLatency(currentLatency);
             faultItem.setStartTimestamp(System.currentTimeMillis() + notAvailableDuration);
 
+            // 采用putIfAbsent而非常用的加锁双重检测
             old = this.faultItemTable.putIfAbsent(name, faultItem);
             if (old != null) {
                 old.setCurrentLatency(currentLatency);
@@ -44,6 +46,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
             }
         } else {
             old.setCurrentLatency(currentLatency);
+            // 这段时间内被规避
             old.setStartTimestamp(System.currentTimeMillis() + notAvailableDuration);
         }
     }
@@ -72,14 +75,16 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         }
 
         if (!tmpList.isEmpty()) {
+            // 洗牌一下list
             Collections.shuffle(tmpList);
-
+            // 再排序一下list，排序规则：FaultItem.compareTo
             Collections.sort(tmpList);
 
             final int half = tmpList.size() / 2;
-            if (half <= 0) {
+            if (half <= 0) { // 只有一个
                 return tmpList.get(0).getName();
             } else {
+                // 根据whichItemWorst选取，这个取模的是half，表明在前半段选取，因为前半段的list相对更加可能可用
                 final int i = this.whichItemWorst.getAndIncrement() % half;
                 return tmpList.get(i).getName();
             }
@@ -107,6 +112,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
 
         @Override
         public int compareTo(final FaultItem other) {
+            // 是否可用具有最高优先级
             if (this.isAvailable() != other.isAvailable()) {
                 if (this.isAvailable())
                     return -1;
@@ -115,12 +121,14 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
                     return 1;
             }
 
+            // 可用性相同的情况下比较currentLatency
             if (this.currentLatency < other.currentLatency)
                 return -1;
             else if (this.currentLatency > other.currentLatency) {
                 return 1;
             }
 
+            // currentLatency相同时比较startTimestamp
             if (this.startTimestamp < other.startTimestamp)
                 return -1;
             else if (this.startTimestamp > other.startTimestamp) {
@@ -130,6 +138,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
             return 0;
         }
 
+        // 当前时间是否已经超过规避时间
         public boolean isAvailable() {
             return (System.currentTimeMillis() - startTimestamp) >= 0;
         }
