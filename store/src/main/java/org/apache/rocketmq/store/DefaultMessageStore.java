@@ -16,28 +16,6 @@
  */
 package org.apache.rocketmq.store;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.net.Inet6Address;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileLock;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.rocketmq.common.BrokerConfig;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.ServiceThread;
@@ -63,50 +41,94 @@ import org.apache.rocketmq.store.index.QueryOffsetResult;
 import org.apache.rocketmq.store.schedule.ScheduleMessageService;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.net.Inet6Address;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileLock;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
 public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // 消息存储配置类
     private final MessageStoreConfig messageStoreConfig;
-    // CommitLog
+    // CommitLog文件存储实现类
     private final CommitLog commitLog;
 
+    // 消息队列存储缓存表，按topic分组
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
 
+    // 消息队列文件ConsumeQueue刷盘线程
     private final FlushConsumeQueueService flushConsumeQueueService;
 
+    // 清楚CommitLog文件服务
     private final CleanCommitLogService cleanCommitLogService;
 
+    // 清楚ConsumeQueue文件服务
     private final CleanConsumeQueueService cleanConsumeQueueService;
 
+    // 索引文件实现类
     private final IndexService indexService;
 
+    // MappedFile分配服务
     private final AllocateMappedFileService allocateMappedFileService;
 
+    // CommitLog消息分发，根据CommitLog文件构建ConsumeQueue、IndexFile文件
     private final ReputMessageService reputMessageService;
 
+    // 存储HA服务
     private final HAService haService;
 
+    // 计划消息服务（处理延时消息相关）
     private final ScheduleMessageService scheduleMessageService;
 
+    // 存储状态统计服务
     private final StoreStatsService storeStatsService;
 
+    // 消息堆内存缓存
     private final TransientStorePool transientStorePool;
 
+    // 运行标志类
     private final RunningFlags runningFlags = new RunningFlags();
+
+    // 系统时钟
     private final SystemClock systemClock = new SystemClock();
 
+    // 消息定时存储线程
     private final ScheduledExecutorService scheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("StoreScheduledThread"));
+    // broker状态管理器
     private final BrokerStatsManager brokerStatsManager;
+    // 消息拉取长轮询模式消息到达监听器
     private final MessageArrivingListener messageArrivingListener;
+    // broker配置
     private final BrokerConfig brokerConfig;
 
     private volatile boolean shutdown = true;
 
+    // 文件刷盘监测点
     private StoreCheckpoint storeCheckpoint;
 
     private AtomicLong printTimes = new AtomicLong(0);
 
+    // CommitLog文件调度器集合
     private final LinkedList<CommitLogDispatcher> dispatcherList;
 
     private RandomAccessFile lockFile;
@@ -115,6 +137,7 @@ public class DefaultMessageStore implements MessageStore {
 
     boolean shutDownNormal = false;
 
+    // 磁盘定时检查线程
     private final ScheduledExecutorService diskCheckScheduledExecutorService =
             Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("DiskCheckScheduledThread"));
 
@@ -356,6 +379,7 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    // 对消息的topic长度和扩展属性的字符串长度有限制
     private PutMessageStatus checkMessage(MessageExtBrokerInner msg) {
         if (msg.getTopic().length() > Byte.MAX_VALUE) {
             log.warn("putMessage message topic length too long " + msg.getTopic().length());
@@ -389,6 +413,7 @@ public class DefaultMessageStore implements MessageStore {
             return PutMessageStatus.SERVICE_NOT_AVAILABLE;
         }
 
+        // slave 节点不支持消息写入
         if (BrokerRole.SLAVE == this.messageStoreConfig.getBrokerRole()) {
             long value = this.printTimes.getAndIncrement();
             if ((value % 50000) == 0) {
@@ -397,6 +422,7 @@ public class DefaultMessageStore implements MessageStore {
             return PutMessageStatus.SERVICE_NOT_AVAILABLE;
         }
 
+        // 当前broker不支持写入
         if (!this.runningFlags.isWriteable()) {
             long value = this.printTimes.getAndIncrement();
             if ((value % 50000) == 0) {
@@ -407,6 +433,7 @@ public class DefaultMessageStore implements MessageStore {
             this.printTimes.set(0);
         }
 
+        // os PageCache繁忙
         if (this.isOSPageCacheBusy()) {
             return PutMessageStatus.OS_PAGECACHE_BUSY;
         }
@@ -475,26 +502,33 @@ public class DefaultMessageStore implements MessageStore {
 
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
+        // 校验broker的消息存储服务
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
+        // 当前状态不允许存储消息，直接返回结果
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
             return new PutMessageResult(checkStoreStatus, null);
         }
 
+        // 校验消息
         PutMessageStatus msgCheckStatus = this.checkMessage(msg);
+        // 消息不合法，直接返回
         if (msgCheckStatus == PutMessageStatus.MESSAGE_ILLEGAL) {
             return new PutMessageResult(msgCheckStatus, null);
         }
 
         long beginTime = this.getSystemClock().now();
+        // 调用commitLog#putMessage
         PutMessageResult result = this.commitLog.putMessage(msg);
         long elapsedTime = this.getSystemClock().now() - beginTime;
-        if (elapsedTime > 500) {
+        if (elapsedTime > 500) { // 超过500毫秒，打印一下日志
             log.warn("not in lock elapsed time(ms)={}, bodyLength={}", elapsedTime, msg.getBody().length);
         }
 
+        // 更新相关统计状态
         this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
 
         if (null == result || !result.isOk()) {
+            // 更新失败次数
             this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
         }
 
@@ -531,11 +565,13 @@ public class DefaultMessageStore implements MessageStore {
 
     @Override
     public boolean isOSPageCacheBusy() {
+        // 加锁开始时间
         long begin = this.getCommitLog().getBeginTimeInLock();
+        // 加锁到现在的时间间隔
         long diff = this.systemClock.now() - begin;
 
-        return diff < 10000000
-            && diff > this.messageStoreConfig.getOsPageCacheBusyTimeOutMills();
+        return diff < 10000000 // 加锁小于10秒
+            && diff > this.messageStoreConfig.getOsPageCacheBusyTimeOutMills(); // 大于osPageCache设置的超时时间
     }
 
     @Override

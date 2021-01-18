@@ -16,6 +16,11 @@
  */
 package org.apache.rocketmq.store;
 
+import org.apache.rocketmq.common.ServiceThread;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+
 import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -24,10 +29,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
-import org.apache.rocketmq.common.ServiceThread;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 public class StoreStatsService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -136,6 +137,7 @@ public class StoreStatsService extends ServiceThread {
             times[12].incrementAndGet();
         }
 
+        // 更新消息put的最大时间，加锁保护
         if (value > this.putMessageEntireTimeMax) {
             this.lockPut.lock();
             this.putMessageEntireTimeMax =
