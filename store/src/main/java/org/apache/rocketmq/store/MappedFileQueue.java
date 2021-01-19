@@ -16,6 +16,11 @@
  */
 package org.apache.rocketmq.store;
 
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -24,10 +29,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.apache.rocketmq.common.UtilAll;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 public class MappedFileQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -35,15 +36,21 @@ public class MappedFileQueue {
 
     private static final int DELETE_FILES_BATCH_MAX = 10;
 
+    // 存储目录
     private final String storePath;
 
+    // 单个文件存储大小
     private final int mappedFileSize;
 
+    // 内存映射文件集合
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
+    // 创建内存映射文件服务类
     private final AllocateMappedFileService allocateMappedFileService;
 
+    // 刷盘指针，表示该指针之前的数据已经持久化到磁盘
     private long flushedWhere = 0;
+    // 提交指针
     private long committedWhere = 0;
 
     private volatile long storeTimestamp = 0;
@@ -193,23 +200,29 @@ public class MappedFileQueue {
 
     public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
         long createOffset = -1;
+        //g再不死心获取一次
         MappedFile mappedFileLast = getLastMappedFile();
 
         if (mappedFileLast == null) {
+            // startOffset 必须是文件大小的整数倍，所以这里处理一下，例如：文件大小 100，传了198，向下取100的倍数就是100
             createOffset = startOffset - (startOffset % this.mappedFileSize);
         }
 
         if (mappedFileLast != null && mappedFileLast.isFull()) {
+            // 从最后一个文件的起始偏移+文件大小 = 新的文件的偏移
             createOffset = mappedFileLast.getFileFromOffset() + this.mappedFileSize;
         }
 
         if (createOffset != -1 && needCreate) {
+            // 文件的名称使用createOffset
             String nextFilePath = this.storePath + File.separator + UtilAll.offset2FileName(createOffset);
+            // 同时构造下下一个文件的地址
             String nextNextFilePath = this.storePath + File.separator
                 + UtilAll.offset2FileName(createOffset + this.mappedFileSize);
             MappedFile mappedFile = null;
 
             if (this.allocateMappedFileService != null) {
+                // 调用内存映射文件分配服务创建下一个和下下一个内存映射文件,返回的是nextFilePath，作用就是除了第一次会发送两个创建内存映射文件请求，后续都提前创建下下一个，保证高性能
                 mappedFile = this.allocateMappedFileService.putRequestAndReturnMappedFile(nextFilePath,
                     nextNextFilePath, this.mappedFileSize);
             } else {
@@ -224,6 +237,7 @@ public class MappedFileQueue {
                 if (this.mappedFiles.isEmpty()) {
                     mappedFile.setFirstCreateInQueue(true);
                 }
+                // 这里只add了一个
                 this.mappedFiles.add(mappedFile);
             }
 
@@ -315,10 +329,12 @@ public class MappedFileQueue {
         return 0;
     }
 
+    // 剩余待提交的数据量
     public long remainHowManyDataToCommit() {
         return getMaxWrotePosition() - committedWhere;
     }
 
+    // 剩余待刷盘的数据量
     public long remainHowManyDataToFlush() {
         return getMaxOffset() - flushedWhere;
     }

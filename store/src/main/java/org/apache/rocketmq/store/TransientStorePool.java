@@ -18,15 +18,16 @@ package org.apache.rocketmq.store;
 
 import com.sun.jna.NativeLong;
 import com.sun.jna.Pointer;
-import java.nio.ByteBuffer;
-import java.util.Deque;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.config.MessageStoreConfig;
 import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
+
+import java.nio.ByteBuffer;
+import java.util.Deque;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 public class TransientStorePool {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -48,12 +49,15 @@ public class TransientStorePool {
      */
     public void init() {
         for (int i = 0; i < poolSize; i++) {
+            // 堆外内存
             ByteBuffer byteBuffer = ByteBuffer.allocateDirect(fileSize);
-
+            // 堆外内存地址
             final long address = ((DirectBuffer) byteBuffer).address();
+            // 构造指针
             Pointer pointer = new Pointer(address);
+            // 锁定这一段内存，防止被交换到磁盘上
             LibC.INSTANCE.mlock(pointer, new NativeLong(fileSize));
-
+            // 加入池中
             availableBuffers.offer(byteBuffer);
         }
     }
@@ -74,7 +78,7 @@ public class TransientStorePool {
 
     public ByteBuffer borrowBuffer() {
         ByteBuffer buffer = availableBuffers.pollFirst();
-        if (availableBuffers.size() < poolSize * 0.4) {
+        if (availableBuffers.size() < poolSize * 0.4) { // 小于40%时打印日志提醒
             log.warn("TransientStorePool only remain {} sheets.", availableBuffers.size());
         }
         return buffer;

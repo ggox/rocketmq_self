@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class MappedFile extends ReferenceResource {
+    // os PageSize,默认4k
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -156,12 +157,17 @@ public class MappedFile extends ReferenceResource {
         this.fileFromOffset = Long.parseLong(this.file.getName());
         boolean ok = false;
 
+        // 目录不存在就创建
         ensureDirOK(this.file.getParent());
 
         try {
+            // 创建一个FileChannel
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
+            // 进行mmap内存文件映射
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
+            // 更新虚拟内存映射总数
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
+            // 更新内存映射文件数量
             TOTAL_MAPPED_FILES.incrementAndGet();
             ok = true;
         } catch (FileNotFoundException e) {
@@ -201,15 +207,18 @@ public class MappedFile extends ReferenceResource {
         assert messageExt != null;
         assert cb != null;
 
+        // 获取写入位置
         int currentPos = this.wrotePosition.get();
 
         if (currentPos < this.fileSize) {
+            // writeBuffer是启动堆外内存池才会有的
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
+            // 定位到写入位置
             byteBuffer.position(currentPos);
             AppendMessageResult result;
-            if (messageExt instanceof MessageExtBrokerInner) {
+            if (messageExt instanceof MessageExtBrokerInner) { // 单条消息
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBrokerInner) messageExt);
-            } else if (messageExt instanceof MessageExtBatch) {
+            } else if (messageExt instanceof MessageExtBatch) { // 批量消息
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBatch) messageExt);
             } else {
                 return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
@@ -485,14 +494,16 @@ public class MappedFile extends ReferenceResource {
     // mappedFile 预热
     public void warmMappedFile(FlushDiskType type, int pages) {
         long beginTime = System.currentTimeMillis();
+        // 切片视图
         ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
         int flush = 0;
         long time = System.currentTimeMillis();
         for (int i = 0, j = 0; i < this.fileSize; i += MappedFile.OS_PAGE_SIZE, j++) {
+            // 全部写入0
             byteBuffer.put(i, (byte) 0);
-            // force flush when flush disk type is sync
+            // force flush when flush disk type is sync 如果是同步刷盘模式，强制flush
             if (type == FlushDiskType.SYNC_FLUSH) {
-                if ((i / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE) >= pages) {
+                if ((i / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE) >= pages) { // 每次刷盘时，累计到pages数量的页缓存才刷盘一次
                     flush = i;
                     mappedByteBuffer.force();
                 }
@@ -503,7 +514,7 @@ public class MappedFile extends ReferenceResource {
                 log.info("j={}, costTime={}", j, System.currentTimeMillis() - time);
                 time = System.currentTimeMillis();
                 try {
-                    Thread.sleep(0);
+                    Thread.sleep(0); // 释放一下cpu控制权
                 } catch (InterruptedException e) {
                     log.error("Interrupted", e);
                 }

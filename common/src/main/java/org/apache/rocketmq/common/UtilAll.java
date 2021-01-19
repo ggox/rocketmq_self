@@ -90,9 +90,9 @@ public class UtilAll {
 
     public static String offset2FileName(final long offset) {
         final NumberFormat nf = NumberFormat.getInstance();
-        nf.setMinimumIntegerDigits(20);
-        nf.setMaximumFractionDigits(0);
-        nf.setGroupingUsed(false);
+        nf.setMinimumIntegerDigits(20); // 整数部分最小20，不满用0填充
+        nf.setMaximumFractionDigits(0); // 小数部分为0
+        nf.setGroupingUsed(false); // 不使用分组方式显示
         return nf.format(offset);
     }
 

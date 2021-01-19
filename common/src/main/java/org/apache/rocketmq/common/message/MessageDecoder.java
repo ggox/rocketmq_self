@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.common.message;
 
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -27,8 +30,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.rocketmq.common.UtilAll;
-import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 
 public class MessageDecoder {
 //    public final static int MSG_ID_LENGTH = 8 + 8;
@@ -60,7 +61,7 @@ public class MessageDecoder {
 
     public static String createMessageId(final ByteBuffer input, final ByteBuffer addr, final long offset) {
         input.flip();
-        int msgIDLength = addr.limit() == 8 ? 16 : 28;
+        int msgIDLength = addr.limit() == 8 ? 16 : 28; // ip + port + offset
         input.limit(msgIDLength);
 
         input.put(addr);

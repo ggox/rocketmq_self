@@ -16,13 +16,14 @@
  */
 package org.apache.rocketmq.common.message;
 
+import org.apache.rocketmq.common.TopicFilterType;
+import org.apache.rocketmq.common.sysflag.MessageSysFlag;
+
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
-import org.apache.rocketmq.common.TopicFilterType;
-import org.apache.rocketmq.common.sysflag.MessageSysFlag;
 
 public class MessageExt extends Message {
     private static final long serialVersionUID = 5720810158625748049L;
@@ -72,10 +73,13 @@ public class MessageExt extends Message {
         InetSocketAddress inetSocketAddress = (InetSocketAddress) socketAddress;
         InetAddress address = inetSocketAddress.getAddress();
         if (address instanceof Inet4Address) {
+            // ipv4 4个字节
             byteBuffer.put(inetSocketAddress.getAddress().getAddress(), 0, 4);
         } else {
+            // ipv6 16个字节
             byteBuffer.put(inetSocketAddress.getAddress().getAddress(), 0, 16);
         }
+        // 端口4个字节
         byteBuffer.putInt(inetSocketAddress.getPort());
         byteBuffer.flip();
         return byteBuffer;
