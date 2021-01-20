@@ -1163,7 +1163,7 @@ public class CommitLog {
         if (mappedFile != null) {
             if (mappedFile.isAvailable()) {
                 return mappedFile.getFileFromOffset();
-            } else {
+            } else { // 这种情况一般是第一个文件正在删除中...所以直接获取下一个文件偏移量
                 return this.rollNextFile(mappedFile.getFileFromOffset());
             }
         }
