@@ -81,25 +81,30 @@ public class MappedFileQueue {
         }
     }
 
+    // 根据时间戳查询内存映射文件
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
         if (null == mfs)
             return null;
 
+        // 遍历每个MappedFile
         for (int i = 0; i < mfs.length; i++) {
             MappedFile mappedFile = (MappedFile) mfs[i];
+            // 返回最近修改时间大于timestamp的
             if (mappedFile.getLastModifiedTimestamp() >= timestamp) {
                 return mappedFile;
             }
         }
 
+        // 如果没有一个满足timestamp的要求，则返回最近一个file
         return (MappedFile) mfs[mfs.length - 1];
     }
 
     private Object[] copyMappedFiles(final int reservedMappedFiles) {
         Object[] mfs;
 
+        // 如果当前文件集合数量小于等于 reservedMappedFiles，则直接返回null
         if (this.mappedFiles.size() <= reservedMappedFiles) {
             return null;
         }
@@ -128,6 +133,7 @@ public class MappedFileQueue {
         this.deleteExpiredFile(willRemoveFiles);
     }
 
+    // 删除过期的文件
     void deleteExpiredFile(List<MappedFile> files) {
 
         if (!files.isEmpty()) {
@@ -480,6 +486,7 @@ public class MappedFileQueue {
             MappedFile firstMappedFile = this.getFirstMappedFile();
             MappedFile lastMappedFile = this.getLastMappedFile();
             if (firstMappedFile != null && lastMappedFile != null) {
+                // offset不在合法范围内，打印日志
                 if (offset < firstMappedFile.getFileFromOffset() || offset >= lastMappedFile.getFileFromOffset() + this.mappedFileSize) {
                     LOG_ERROR.warn("Offset not matched. Request offset: {}, firstOffset: {}, lastOffset: {}, mappedFileSize: {}, mappedFiles count: {}",
                         offset,
@@ -488,6 +495,7 @@ public class MappedFileQueue {
                         this.mappedFileSize,
                         this.mappedFiles.size());
                 } else {
+                    // 计算index
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {
@@ -495,11 +503,13 @@ public class MappedFileQueue {
                     } catch (Exception ignored) {
                     }
 
+                    // 再校验一下
                     if (targetFile != null && offset >= targetFile.getFileFromOffset()
                         && offset < targetFile.getFileFromOffset() + this.mappedFileSize) {
                         return targetFile;
                     }
 
+                    // 发现index获取的offset不合法（可能由于某种不可知的原因，内存映射文件中间不是连续的），之间遍历所有MappedFile查找
                     for (MappedFile tmpMappedFile : this.mappedFiles) {
                         if (offset >= tmpMappedFile.getFileFromOffset()
                             && offset < tmpMappedFile.getFileFromOffset() + this.mappedFileSize) {

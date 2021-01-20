@@ -47,24 +47,36 @@ public class MappedFile extends ReferenceResource {
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // MappedFile内存总和
     private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
-
+    // MappedFile总数
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
+    // 当前文件的写指针
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
+    // 当前文件的提交指针（如果启用了transientStorePool，会先保存到TransientStorePool的ByteBuffer,然后异步的提交到内存映射的ByteBuffer）
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
+    // 刷写磁盘的指针
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
+    // 文件大小
     protected int fileSize;
+    // 文件通道
     protected FileChannel fileChannel;
     /**
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
      */
     protected ByteBuffer writeBuffer = null;
+    // 堆外内存池
     protected TransientStorePool transientStorePool = null;
     private String fileName;
+    // 文件初始偏移量
     private long fileFromOffset;
+    // 实际物理文件对象
     private File file;
+    // 内存映射的ByteBuffer
     private MappedByteBuffer mappedByteBuffer;
+    // 文件最后一次写入的时间
     private volatile long storeTimestamp = 0;
+    // 是否是队列中的第一个文件
     private boolean firstCreateInQueue = false;
 
     public MappedFile() {
@@ -92,9 +104,11 @@ public class MappedFile extends ReferenceResource {
     public static void clean(final ByteBuffer buffer) {
         if (buffer == null || !buffer.isDirect() || buffer.capacity() == 0)
             return;
+        // 找到原始的DirectByteBuffer，获取cleaner,执行clean方法 biz2cfm 为啥要使用反射？可能和jdk版本有关
         invoke(invoke(viewed(buffer), "cleaner"), "clean");
     }
 
+    // 反射调用
     private static Object invoke(final Object target, final String methodName, final Class<?>... args) {
         return AccessController.doPrivileged(new PrivilegedAction<Object>() {
             public Object run() {
@@ -118,6 +132,7 @@ public class MappedFile extends ReferenceResource {
         }
     }
 
+    // 递归调用attachment找到原始的ByteBuffer
     private static ByteBuffer viewed(ByteBuffer buffer) {
         String methodName = "viewedBuffer";
         Method[] methods = buffer.getClass().getMethods();
@@ -279,6 +294,7 @@ public class MappedFile extends ReferenceResource {
      * @return The current flushed position
      */
     public int flush(final int flushLeastPages) {
+        // 同commit要先判断一下待flush的页数是否达到flushLeastPages
         if (this.isAbleToFlush(flushLeastPages)) {
             if (this.hold()) {
                 int value = getReadPosition();
@@ -337,7 +353,9 @@ public class MappedFile extends ReferenceResource {
                 byteBuffer.position(lastCommittedPosition);
                 byteBuffer.limit(writePos);
                 this.fileChannel.position(lastCommittedPosition);
+                // 写入到fileChannel中
                 this.fileChannel.write(byteBuffer);
+                // 更新writePos
                 this.committedPosition.set(writePos);
             } catch (Throwable e) {
                 log.error("Error occurred when commit data to FileChannel.", e);
@@ -360,14 +378,16 @@ public class MappedFile extends ReferenceResource {
         return write > flush;
     }
 
+    // 是否允许commit
     protected boolean isAbleToCommit(final int commitLeastPages) {
         int flush = this.committedPosition.get();
         int write = this.wrotePosition.get();
 
-        if (this.isFull()) {
+        if (this.isFull()) { // 写满了
             return true;
         }
 
+        // 待commit的页数达到了commitLeastPages
         if (commitLeastPages > 0) {
             return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) >= commitLeastPages;
         }
@@ -408,6 +428,7 @@ public class MappedFile extends ReferenceResource {
         return null;
     }
 
+    // 返回 pos -> getReadPosition 之间的数据
     public SelectMappedBufferResult selectMappedBuffer(int pos) {
         int readPosition = getReadPosition();
         if (pos < readPosition && pos >= 0) {
@@ -448,13 +469,13 @@ public class MappedFile extends ReferenceResource {
     public boolean destroy(final long intervalForcibly) {
         this.shutdown(intervalForcibly);
 
-        if (this.isCleanupOver()) {
+        if (this.isCleanupOver()) { // 清理结束了
             try {
-                this.fileChannel.close();
+                this.fileChannel.close(); // 关闭文件通道
                 log.info("close file channel " + this.fileName + " OK");
 
                 long beginTime = System.currentTimeMillis();
-                boolean result = this.file.delete();
+                boolean result = this.file.delete(); // 删除文件
                 log.info("delete file[REF:" + this.getRefCount() + "] " + this.fileName
                     + (result ? " OK, " : " Failed, ") + "W:" + this.getWrotePosition() + " M:"
                     + this.getFlushedPosition() + ", "
@@ -484,6 +505,7 @@ public class MappedFile extends ReferenceResource {
      * @return The max position which have valid data
      */
     public int getReadPosition() {
+        // 表示已提交的数据是Valid data
         return this.writeBuffer == null ? this.wrotePosition.get() : this.committedPosition.get();
     }
 
@@ -563,11 +585,13 @@ public class MappedFile extends ReferenceResource {
         final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();
         Pointer pointer = new Pointer(address);
         {
+            // mlock：可以将进程使用的部分或者全部的地址空间锁定在物理内存中，防止其被交换到swap空间
             int ret = LibC.INSTANCE.mlock(pointer, new NativeLong(this.fileSize));
             log.info("mlock {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }
 
         {
+            // madvise：给操作系统建议，说这文件在不久的将来要访问的，因此，提前读几页可能是个好主意
             int ret = LibC.INSTANCE.madvise(pointer, new NativeLong(this.fileSize), LibC.MADV_WILLNEED);
             log.info("madvise {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }

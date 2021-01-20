@@ -24,6 +24,7 @@ public abstract class ReferenceResource {
     protected volatile boolean cleanupOver = false;
     private volatile long firstShutdownTimestamp = 0;
 
+    // 增加引用计数 且是同步方法
     public synchronized boolean hold() {
         if (this.isAvailable()) {
             if (this.refCount.getAndIncrement() > 0) {
@@ -45,9 +46,9 @@ public abstract class ReferenceResource {
             this.available = false;
             this.firstShutdownTimestamp = System.currentTimeMillis();
             this.release();
-        } else if (this.getRefCount() > 0) {
+        } else if (this.getRefCount() > 0) { // 第二次关闭，检查intervalForcibly（拒绝被消费的最大超时时间）
             if ((System.currentTimeMillis() - this.firstShutdownTimestamp) >= intervalForcibly) {
-                this.refCount.set(-1000 - this.getRefCount());
+                this.refCount.set(-1000 - this.getRefCount()); // 应用计数强制set
                 this.release();
             }
         }

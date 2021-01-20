@@ -102,7 +102,7 @@ public class DefaultMessageStore implements MessageStore {
     // 存储状态统计服务
     private final StoreStatsService storeStatsService;
 
-    // 消息堆内存缓存
+    // 消息堆外内存缓存
     private final TransientStorePool transientStorePool;
 
     // 运行标志类
