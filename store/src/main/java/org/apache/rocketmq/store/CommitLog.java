@@ -270,8 +270,10 @@ public class CommitLog {
 
             int flag = byteBuffer.getInt();
 
+            // queueOffset是一个消息索引，而非实际文件的物理偏移
             long queueOffset = byteBuffer.getLong();
 
+            // commitLog的物理偏移
             long physicOffset = byteBuffer.getLong();
 
             int sysFlag = byteBuffer.getInt();
@@ -300,17 +302,17 @@ public class CommitLog {
 
             int bodyLen = byteBuffer.getInt();
             if (bodyLen > 0) {
-                if (readBody) {
+                if (readBody) { // 是否需要读取body
                     byteBuffer.get(bytesContent, 0, bodyLen);
 
-                    if (checkCRC) {
+                    if (checkCRC) { // 是否需要校验
                         int crc = UtilAll.crc32(bytesContent, 0, bodyLen);
                         if (crc != bodyCRC) {
                             log.warn("CRC check failed. bodyCRC={}, currentCRC={}", crc, bodyCRC);
                             return new DispatchRequest(-1, false/* success */);
                         }
                     }
-                } else {
+                } else { // 不读取直接跳过
                     byteBuffer.position(byteBuffer.position() + bodyLen);
                 }
             }
@@ -330,10 +332,13 @@ public class CommitLog {
                 String properties = new String(bytesContent, 0, propertiesLength, MessageDecoder.CHARSET_UTF8);
                 propertiesMap = MessageDecoder.string2messageProperties(properties);
 
+                // keys 用于索引
                 keys = propertiesMap.get(MessageConst.PROPERTY_KEYS);
 
+                // uniqKey 消息唯一标志
                 uniqKey = propertiesMap.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
 
+                // tags
                 String tags = propertiesMap.get(MessageConst.PROPERTY_TAGS);
                 if (tags != null && tags.length() > 0) {
                     tagsCode = MessageExtBrokerInner.tagsString2tagsCode(MessageExt.parseTopicFilterType(sysFlag), tags);
@@ -341,6 +346,7 @@ public class CommitLog {
 
                 // Timing message processing
                 {
+                    // 延迟级别
                     String t = propertiesMap.get(MessageConst.PROPERTY_DELAY_TIME_LEVEL);
                     if (TopicValidator.RMQ_SYS_SCHEDULE_TOPIC.equals(topic) && t != null) {
                         int delayLevel = Integer.parseInt(t);
@@ -350,15 +356,16 @@ public class CommitLog {
                         }
 
                         if (delayLevel > 0) {
+                            // tagsode = 存储时间+延迟时间
                             tagsCode = this.defaultMessageStore.getScheduleMessageService().computeDeliverTimestamp(delayLevel,
                                 storeTimestamp);
                         }
                     }
                 }
             }
-
+            // 计算消息长度
             int readLength = calMsgLength(sysFlag, bodyLen, topicLen, propertiesLength);
-            if (totalSize != readLength) {
+            if (totalSize != readLength) { // 数据错误
                 doNothingForDeadCode(reconsumeTimes);
                 doNothingForDeadCode(flag);
                 doNothingForDeadCode(bornTimeStamp);
@@ -370,6 +377,7 @@ public class CommitLog {
                 return new DispatchRequest(totalSize, false/* success */);
             }
 
+            // new一个DispatchRequest用于调度转发
             return new DispatchRequest(
                 topic,
                 queueId,
@@ -1158,6 +1166,7 @@ public class CommitLog {
         return -1;
     }
 
+    // biz2cfm 这个方法和 MappedFileQueue.getMinOffset 有些微差别
     public long getMinOffset() {
         MappedFile mappedFile = this.mappedFileQueue.getFirstMappedFile();
         if (mappedFile != null) {
@@ -1171,8 +1180,11 @@ public class CommitLog {
         return -1;
     }
 
+    // 注意offset为0的特殊情况
     public SelectMappedBufferResult getMessage(final long offset, final int size) {
+        // 获取单个MappedFile的大小
         int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
+        // 调用 mappedFileQueue#findMappedFileByOffset 如果offset为0，那么当查询不到时会返回第一个MappedFile
         MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset, offset == 0);
         if (mappedFile != null) {
             int pos = (int) (offset % mappedFileSize);

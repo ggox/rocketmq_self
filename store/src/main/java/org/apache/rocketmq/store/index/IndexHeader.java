@@ -29,12 +29,17 @@ public class IndexHeader {
     private static int hashSlotcountIndex = 32;
     private static int indexCountIndex = 36;
     private final ByteBuffer byteBuffer;
+    // 最小存储时间
     private AtomicLong beginTimestamp = new AtomicLong(0);
+    // 最大存储时间
     private AtomicLong endTimestamp = new AtomicLong(0);
+    // 最小物理偏移量（commitlog偏移量）
     private AtomicLong beginPhyOffset = new AtomicLong(0);
+    // 最大物理偏移量
     private AtomicLong endPhyOffset = new AtomicLong(0);
+    // 已使用hash槽个数
     private AtomicInteger hashSlotCount = new AtomicInteger(0);
-
+    // index条目已使用个数
     private AtomicInteger indexCount = new AtomicInteger(1);
 
     public IndexHeader(final ByteBuffer byteBuffer) {
@@ -48,6 +53,8 @@ public class IndexHeader {
         this.endPhyOffset.set(byteBuffer.getLong(endPhyoffsetIndex));
 
         this.hashSlotCount.set(byteBuffer.getInt(hashSlotcountIndex));
+
+        // indexCount初始值为1
         this.indexCount.set(byteBuffer.getInt(indexCountIndex));
 
         if (this.indexCount.get() <= 0) {
