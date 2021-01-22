@@ -64,6 +64,7 @@ public class ConsumeQueue {
         this.topic = topic;
         this.queueId = queueId;
 
+        // ConsumeQueue文件路径
         String queueDir = this.storePath
             + File.separator + topic
             + File.separator + queueId;
@@ -93,10 +94,12 @@ public class ConsumeQueue {
         return result;
     }
 
+    // ConsumeQueue 恢复逻辑
     public void recover() {
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
         if (!mappedFiles.isEmpty()) {
 
+            // 只对最近的三个文件做恢复处理
             int index = mappedFiles.size() - 3;
             if (index < 0)
                 index = 0;
@@ -109,27 +112,32 @@ public class ConsumeQueue {
             long maxExtAddr = 1;
             while (true) {
                 for (int i = 0; i < mappedFileSizeLogics; i += CQ_STORE_UNIT_SIZE) {
+                    // 获取ConsumeQueue中单个消息的信息
                     long offset = byteBuffer.getLong();
                     int size = byteBuffer.getInt();
                     long tagsCode = byteBuffer.getLong();
 
                     if (offset >= 0 && size > 0) {
                         mappedFileOffset = i + CQ_STORE_UNIT_SIZE;
+                        // 恢复maxPhysicOffset
                         this.maxPhysicOffset = offset + size;
+                        // 判断tagsCode记录的是不是扩展地址
                         if (isExtAddr(tagsCode)) {
                             maxExtAddr = tagsCode;
                         }
                     } else {
+                        //恢复完毕
                         log.info("recover current consume queue file over,  " + mappedFile.getFileName() + " "
                             + offset + " " + size + " " + tagsCode);
                         break;
                     }
                 }
 
+                // 如果相等，表明这个文件存满了
                 if (mappedFileOffset == mappedFileSizeLogics) {
-                    index++;
+                    index++; // 继续处理下一个
                     if (index >= mappedFiles.size()) {
-
+                        // 退出循环
                         log.info("recover last consume queue file over, last mapped file "
                             + mappedFile.getFileName());
                         break;
@@ -148,8 +156,10 @@ public class ConsumeQueue {
             }
 
             processOffset += mappedFileOffset;
+            // processOffset 是恢复完成的有效offset
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
+            // MappedFile中的各个指针复位
             this.mappedFileQueue.truncateDirtyFiles(processOffset);
 
             if (isExtReadEnable()) {
@@ -241,6 +251,7 @@ public class ConsumeQueue {
         return 0;
     }
 
+    // 根据实际物理offset清空多余的数据
     public void truncateDirtyLogicFiles(long phyOffet) {
 
         int logicFileSize = this.mappedFileSize;
@@ -262,7 +273,7 @@ public class ConsumeQueue {
                     long tagsCode = byteBuffer.getLong();
 
                     if (0 == i) {
-                        if (offset >= phyOffet) {
+                        if (offset >= phyOffet) { // 第一个消息就超出了，直接删除文件
                             this.mappedFileQueue.deleteLastMappedFile();
                             break;
                         } else {
@@ -369,6 +380,7 @@ public class ConsumeQueue {
                         long tagsCode = result.getByteBuffer().getLong();
 
                         if (offsetPy >= phyMinOffset) {
+                            // 修正minLogicOffset
                             this.minLogicOffset = mappedFile.getFileFromOffset() + i;
                             log.info("Compute logical min offset: {}, topic: {}, queueId: {}",
                                 this.getMinOffsetInQueue(), this.topic, this.queueId);

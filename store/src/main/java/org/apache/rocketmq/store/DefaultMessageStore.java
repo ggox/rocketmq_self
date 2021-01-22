@@ -206,9 +206,11 @@ public class DefaultMessageStore implements MessageStore {
         boolean result = true;
 
         try {
+            // 用于判断上一次退出是否正常，broker会在启动时在store目录下创建abort文件，在退出时通过jvm钩子删除abort文件，如果发现abort文件还存在，则表示上一次是异常退出，ConsumeQueue数据有可能不一致
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
+            // 处理延时消息相关
             if (null != scheduleMessageService) {
                 result = result && this.scheduleMessageService.load();
             }
@@ -220,11 +222,14 @@ public class DefaultMessageStore implements MessageStore {
             result = result && this.loadConsumeQueue();
 
             if (result) {
+                // 恢复checkPoint
                 this.storeCheckpoint =
                     new StoreCheckpoint(StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
 
+                // IndexFile加载
                 this.indexService.load(lastExitOK);
 
+                // 恢复逻辑
                 this.recover(lastExitOK);
 
                 log.info("load over, and the max phy offset = {}", this.getMaxPhyOffset());
@@ -298,12 +303,14 @@ public class DefaultMessageStore implements MessageStore {
              *  2. DLedger committedPos may be missing, so here just require dispatchBehindBytes <= 0
              */
             while (true) {
+                // 循环等待直到reputMessageService将落后的进度追上
                 if (dispatchBehindBytes() <= 0) {
                     break;
                 }
                 Thread.sleep(1000);
                 log.info("Try to finish doing reput the messages fall behind during the starting, reputOffset={} maxOffset={} behind={}", this.reputMessageService.getReputFromOffset(), this.getMaxPhyOffset(), this.dispatchBehindBytes());
             }
+            // 恢复topicQueueTable
             this.recoverTopicQueueTable();
         }
 
@@ -1413,15 +1420,18 @@ public class DefaultMessageStore implements MessageStore {
         return file.exists();
     }
 
+    // 加载ConsumeQueue文件
     private boolean loadConsumeQueue() {
         File dirLogic = new File(StorePathConfigHelper.getStorePathConsumeQueue(this.messageStoreConfig.getStorePathRootDir()));
         File[] fileTopicList = dirLogic.listFiles();
         if (fileTopicList != null) {
 
+            // 文件topic文件夹
             for (File fileTopic : fileTopicList) {
                 String topic = fileTopic.getName();
 
                 File[] fileQueueIdList = fileTopic.listFiles();
+                // 遍历队列文件夹
                 if (fileQueueIdList != null) {
                     for (File fileQueueId : fileQueueIdList) {
                         int queueId;
@@ -1436,7 +1446,9 @@ public class DefaultMessageStore implements MessageStore {
                             StorePathConfigHelper.getStorePathConsumeQueue(this.messageStoreConfig.getStorePathRootDir()),
                             this.getMessageStoreConfig().getMappedFileSizeConsumeQueue(),
                             this);
+                        // 放置到ConsumeQueueTable中
                         this.putConsumeQueue(topic, queueId, logic);
+                        // 执行加载，将物理文件转化成MappedFile
                         if (!logic.load()) {
                             return false;
                         }
@@ -1451,8 +1463,10 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     private void recover(final boolean lastExitOK) {
+        // 恢复消费队列，返回消费队列中的最大消息物理偏移
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
 
+        // 根据上次是否异常退出，执行不同的分支
         if (lastExitOK) {
             this.commitLog.recoverNormally(maxPhyOffsetOfConsumeQueue);
         } else {
@@ -1485,6 +1499,7 @@ public class DefaultMessageStore implements MessageStore {
         long maxPhysicOffset = -1;
         for (ConcurrentMap<Integer, ConsumeQueue> maps : this.consumeQueueTable.values()) {
             for (ConsumeQueue logic : maps.values()) {
+                // 每个都执行recover
                 logic.recover();
                 if (logic.getMaxPhysicOffset() > maxPhysicOffset) {
                     maxPhysicOffset = logic.getMaxPhysicOffset();
@@ -1504,6 +1519,7 @@ public class DefaultMessageStore implements MessageStore {
             for (ConsumeQueue logic : maps.values()) {
                 String key = logic.getTopic() + "-" + logic.getQueueId();
                 table.put(key, logic.getMaxOffsetInQueue());
+                // 修正minLogicOffset
                 logic.correctMinOffset(minPhyOffset);
             }
         }
@@ -1626,6 +1642,7 @@ public class DefaultMessageStore implements MessageStore {
 
         @Override
         public void dispatch(DispatchRequest request) {
+            // 判断开关
             if (DefaultMessageStore.this.messageStoreConfig.isMessageIndexEnable()) {
                 DefaultMessageStore.this.indexService.buildIndex(request);
             }

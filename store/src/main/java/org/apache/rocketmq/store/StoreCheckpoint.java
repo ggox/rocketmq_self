@@ -108,7 +108,7 @@ public class StoreCheckpoint {
 
     public long getMinTimestamp() {
         long min = Math.min(this.physicMsgTimestamp, this.logicsMsgTimestamp);
-
+        // 这里可能是因为异步刷盘的原因，这个再往下减了3秒
         min -= 1000 * 3;
         if (min < 0)
             min = 0;

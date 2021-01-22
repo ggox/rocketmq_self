@@ -259,6 +259,7 @@ public class BrokerController {
             }
         }
 
+        // 执行messageStore#load方法，内部包含ConsumeQueue和IndexFile的recover机制
         result = result && this.messageStore.load();
 
         if (result) {

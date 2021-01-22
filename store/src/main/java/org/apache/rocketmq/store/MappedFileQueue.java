@@ -159,9 +159,10 @@ public class MappedFileQueue {
 
     public boolean load() {
         File dir = new File(this.storePath);
+        // 遍历所有文件
         File[] files = dir.listFiles();
         if (files != null) {
-            // ascending order
+            // ascending order 排序
             Arrays.sort(files);
             for (File file : files) {
 
@@ -171,9 +172,10 @@ public class MappedFileQueue {
                     return false;
                 }
 
+                // 将文件初始化为MappedFile
                 try {
                     MappedFile mappedFile = new MappedFile(file.getPath(), mappedFileSize);
-
+                    // 三个标志为都是实际的文件大小,后续recover过程会修正这几个指针
                     mappedFile.setWrotePosition(this.mappedFileSize);
                     mappedFile.setFlushedPosition(this.mappedFileSize);
                     mappedFile.setCommittedPosition(this.mappedFileSize);
