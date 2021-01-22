@@ -161,7 +161,7 @@ public class Message implements Serializable {
 
     public boolean isWaitStoreMsgOK() {
         String result = this.getProperty(MessageConst.PROPERTY_WAIT_STORE_MSG_OK);
-        if (null == result)
+        if (null == result) // 默认就是true
             return true;
 
         return Boolean.parseBoolean(result);

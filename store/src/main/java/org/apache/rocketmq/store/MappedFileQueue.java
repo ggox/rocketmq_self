@@ -372,12 +372,15 @@ public class MappedFileQueue {
         if (null != mfs) {
             for (int i = 0; i < mfsLength; i++) {
                 MappedFile mappedFile = (MappedFile) mfs[i];
+                // 最近一次更新时间+过期时间
                 long liveMaxTimestamp = mappedFile.getLastModifiedTimestamp() + expiredTime;
+                // 当前时间大于（最近一次更新时间+过期时间）或者明确表示要删除，则执行删除
                 if (System.currentTimeMillis() >= liveMaxTimestamp || cleanImmediately) {
                     if (mappedFile.destroy(intervalForcibly)) {
                         files.add(mappedFile);
                         deleteCount++;
 
+                        // 批量删除文件的最大值
                         if (files.size() >= DELETE_FILES_BATCH_MAX) {
                             break;
                         }
@@ -446,6 +449,7 @@ public class MappedFileQueue {
         return deleteCount;
     }
 
+    // return true -> 没有新数据flush  flush(0)==true -> 所有数据都已经flush
     public boolean flush(final int flushLeastPages) {
         boolean result = true;
         MappedFile mappedFile = this.findMappedFileByOffset(this.flushedWhere, this.flushedWhere == 0);
@@ -453,9 +457,10 @@ public class MappedFileQueue {
             long tmpTimeStamp = mappedFile.getStoreTimestamp();
             int offset = mappedFile.flush(flushLeastPages);
             long where = mappedFile.getFileFromOffset() + offset;
+            // 相同表示此次并没有数据需要刷盘
             result = where == this.flushedWhere;
             this.flushedWhere = where;
-            if (0 == flushLeastPages) {
+            if (0 == flushLeastPages) { // 表示flush所有待flush的数据
                 this.storeTimestamp = tmpTimeStamp;
             }
         }

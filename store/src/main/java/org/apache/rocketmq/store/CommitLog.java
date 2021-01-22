@@ -943,24 +943,30 @@ public class CommitLog {
 
     public CompletableFuture<PutMessageStatus> submitFlushRequest(AppendMessageResult result, PutMessageResult putMessageResult,
                                                                   MessageExt messageExt) {
-        // Synchronization flush
+        // Synchronization flush  同步刷盘策略
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
+            // 采用组提交方式 GroupCommitService
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
-            if (messageExt.isWaitStoreMsgOK()) {
+            if (messageExt.isWaitStoreMsgOK()) { // 要等待消息存储完毕
+                // 构建GroupCommitRequest
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes(),
                         this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout());
+                // 放入request
                 service.putRequest(request);
+                // 异步编程，返回future
                 return request.future();
             } else {
+                // 如果不要求等待存储完毕才返回，那么这里只做了异步wakeup的操作，就直接返回了
                 service.wakeup();
                 return CompletableFuture.completedFuture(PutMessageStatus.PUT_OK);
             }
         }
-        // Asynchronous flush
+        // Asynchronous flush 如果是异步刷盘（默认）
         else {
             if (!this.defaultMessageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {
+                // 如果没有启用TransientStorePool，直接唤醒flush线程
                 flushCommitLogService.wakeup();
-            } else  {
+            } else  { // 否则唤醒commit线程
                 commitLogService.wakeup();
             }
             return CompletableFuture.completedFuture(PutMessageStatus.PUT_OK);
@@ -1306,7 +1312,7 @@ public class CommitLog {
                     long end = System.currentTimeMillis();
                     if (!result) {
                         this.lastCommitTimestamp = end; // result = false means some data committed.
-                        //now wake up flush thread.
+                        //now wake up flush thread.  每次commit完都唤醒一次flush线程
                         flushCommitLogService.wakeup();
                     }
 
@@ -1338,9 +1344,13 @@ public class CommitLog {
             while (!this.isStopped()) {
                 boolean flushCommitLogTimed = CommitLog.this.defaultMessageStore.getMessageStoreConfig().isFlushCommitLogTimed();
 
+                // 常规flush间隔默认500ms一次
                 int interval = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushIntervalCommitLog();
+
+                // 常规flush间隔时，如果待flush的页数达到了flushPhysicQueueLeastPages，就flush一次，默认达到4页就flush
                 int flushPhysicQueueLeastPages = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushCommitLogLeastPages();
 
+                // 全量flush时间间隔，默认10秒一次
                 int flushPhysicQueueThoroughInterval =
                     CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushCommitLogThoroughInterval();
 
@@ -1410,9 +1420,11 @@ public class CommitLog {
     }
 
     public static class GroupCommitRequest {
+        // 下一个消息的offset，这个offset之前的数据都要flush
         private final long nextOffset;
         private CompletableFuture<PutMessageStatus> flushOKFuture = new CompletableFuture<>();
         private final long startTimestamp = System.currentTimeMillis();
+        // flush超时时间  好像没有用到
         private long timeoutMillis = Long.MAX_VALUE;
 
         public GroupCommitRequest(long nextOffset, long timeoutMillis) {
@@ -1446,13 +1458,18 @@ public class CommitLog {
         private volatile List<GroupCommitRequest> requestsWrite = new ArrayList<GroupCommitRequest>();
         private volatile List<GroupCommitRequest> requestsRead = new ArrayList<GroupCommitRequest>();
 
+        // 加了同步锁
         public synchronized void putRequest(final GroupCommitRequest request) {
             synchronized (this.requestsWrite) {
+                // 放入requestsWrite
                 this.requestsWrite.add(request);
             }
+            // 唤醒线程
             this.wakeup();
         }
 
+        // 交换requestsWrite和requestsRead数据，所谓组提交的实现就在这里，先积累一定的请求requestsWrite，然后交换给requestsRead进行批量flush
+        // 也避免了任务提交和任务执行的锁冲突
         private void swapRequests() {
             List<GroupCommitRequest> tmp = this.requestsWrite;
             this.requestsWrite = this.requestsRead;
@@ -1466,19 +1483,23 @@ public class CommitLog {
                         // There may be a message in the next file, so a maximum of
                         // two times the flush
                         boolean flushOK = false;
+                        // 第一次如果没有flush完会再尝试一次
                         for (int i = 0; i < 2 && !flushOK; i++) {
                             flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
 
                             if (!flushOK) {
+                                // 之所以一次flush可能是因为commit进度有点慢(启用TransientStorePool时，commit指针才是有效的需要flush的数据)
                                 CommitLog.this.mappedFileQueue.flush(0);
                             }
                         }
 
+                        // 唤醒所有等待同步刷盘的线程  这里的FLUSH_DISK_TIMEOUT结果是有点问题的，超时时间没有用到，只是默认多一次重试
                         req.wakeupCustomer(flushOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_DISK_TIMEOUT);
                     }
 
                     long storeTimestamp = CommitLog.this.mappedFileQueue.getStoreTimestamp();
                     if (storeTimestamp > 0) {
+                        // 更新commitlog刷盘时间点
                         CommitLog.this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(storeTimestamp);
                     }
 

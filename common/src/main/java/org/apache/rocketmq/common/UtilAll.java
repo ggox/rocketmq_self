@@ -210,12 +210,14 @@ public class UtilAll {
             if (!file.exists())
                 return -1;
 
+            // 文件所在磁盘分区总时间
             long totalSpace = file.getTotalSpace();
 
             if (totalSpace > 0) {
+                // 剩余空间
                 long freeSpace = file.getFreeSpace();
                 long usedSpace = totalSpace - freeSpace;
-
+                // 使用占比
                 return usedSpace / (double) totalSpace;
             }
         } catch (Exception e) {

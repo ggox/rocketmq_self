@@ -324,6 +324,7 @@ public class DefaultMessageStore implements MessageStore {
         this.storeStatsService.start();
 
         this.createTempFile();
+        // 添加一些周期性执行的定时任务，如定时删除过期文件
         this.addScheduleTask();
         this.shutdown = false;
     }
@@ -1347,6 +1348,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private void addScheduleTask() {
 
+        // 默认每个10秒执行一次过期文件清楚任务
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -1680,13 +1682,17 @@ public class DefaultMessageStore implements MessageStore {
 
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            // 文件保留时间，最后一次更新到现在的时间超过了该值，认为是过期的
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            // 删除物理文件的间隔
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            // 在清除过期文件时， 如果该文件被其他线程所占用（引用次数大于0，比如读取消息），此时会阻止此次删除任务， 同时在第一次试图删除该文件时记录当前时间戳，destroyMapedFileIntervalForcibly表示拒绝删除的保留时间
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
-            boolean timeup = this.isTimeToDelete();
-            boolean spacefull = this.isSpaceToDelete();
-            boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
+            // 以下三个条件满足一个，就执行删除文件的逻辑
+            boolean timeup = this.isTimeToDelete(); // 到了固定的删除过期文件的时间点，默认是凌晨4点
+            boolean spacefull = this.isSpaceToDelete(); // 磁盘空间不足时
+            boolean manualDelete = this.manualDeleteFileSeveralTimes > 0; // 手动调用删除文件接口
 
             if (timeup || spacefull || manualDelete) {
 
@@ -1740,6 +1746,8 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private boolean isSpaceToDelete() {
+
+            // 最大可用比例 默认75%
             double ratio = DefaultMessageStore.this.getMessageStoreConfig().getDiskMaxUsedSpaceRatio() / 100.0;
 
             cleanImmediately = false;
@@ -1747,17 +1755,17 @@ public class DefaultMessageStore implements MessageStore {
             {
                 String storePathPhysic = DefaultMessageStore.this.getMessageStoreConfig().getStorePathCommitLog();
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);
-                if (physicRatio > diskSpaceWarningLevelRatio) {
+                if (physicRatio > diskSpaceWarningLevelRatio) { // 超过警戒线，标记为磁盘full
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
                     if (diskok) {
                         DefaultMessageStore.log.error("physic disk maybe full soon " + physicRatio + ", so mark disk full");
                     }
 
                     cleanImmediately = true;
-                } else if (physicRatio > diskSpaceCleanForciblyRatio) {
+                } else if (physicRatio > diskSpaceCleanForciblyRatio) { // 超过需要清理的阈值，默认85%
                     cleanImmediately = true;
                 } else {
-                    boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskOK();
+                    boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskOK(); // 将磁盘标记恢复
                     if (!diskok) {
                         DefaultMessageStore.log.info("physic disk space OK " + physicRatio + ", so mark disk ok");
                     }
