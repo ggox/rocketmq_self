@@ -160,8 +160,10 @@ public class ProcessQueue {
                 if (!msgs.isEmpty()) {
                     // 取最后一条
                     MessageExt messageExt = msgs.get(msgs.size() - 1);
+                    // 消息队列最大偏移量
                     String property = messageExt.getProperty(MessageConst.PROPERTY_MAX_OFFSET);
                     if (property != null) {
+                        // 最大偏移量 - 最后一条消息的偏移量 = 还有多少消息没有消费
                         long accTotal = Long.parseLong(property) - messageExt.getQueueOffset();
                         if (accTotal > 0) {
                             this.msgAccCnt = accTotal;

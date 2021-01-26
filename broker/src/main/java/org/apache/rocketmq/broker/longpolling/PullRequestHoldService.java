@@ -16,11 +16,6 @@
  */
 package org.apache.rocketmq.broker.longpolling;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.SystemClock;
@@ -28,6 +23,12 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.ConsumeQueueExt;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public class PullRequestHoldService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
@@ -51,7 +52,7 @@ public class PullRequestHoldService extends ServiceThread {
                 mpr = prev;
             }
         }
-
+        // 添加到队列
         mpr.addPullRequest(pullRequest);
     }
 
@@ -68,13 +69,14 @@ public class PullRequestHoldService extends ServiceThread {
         log.info("{} service started", this.getServiceName());
         while (!this.isStopped()) {
             try {
-                if (this.brokerController.getBrokerConfig().isLongPollingEnable()) {
+                if (this.brokerController.getBrokerConfig().isLongPollingEnable()) { // 长轮询，每隔5秒轮训一次
                     this.waitForRunning(5 * 1000);
                 } else {
-                    this.waitForRunning(this.brokerController.getBrokerConfig().getShortPollingTimeMills());
+                    this.waitForRunning(this.brokerController.getBrokerConfig().getShortPollingTimeMills()); // 不开启长轮询，默认1秒轮训一次
                 }
 
                 long beginLockTimestamp = this.systemClock.now();
+                // 检查是否有新消息到达，有到达就通知挂起的请求
                 this.checkHoldRequest();
                 long costTime = this.systemClock.now() - beginLockTimestamp;
                 if (costTime > 5 * 1000) {
@@ -101,6 +103,7 @@ public class PullRequestHoldService extends ServiceThread {
                 int queueId = Integer.parseInt(kArray[1]);
                 final long offset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);
                 try {
+                    // 通知消息到达
                     this.notifyMessageArriving(topic, queueId, offset);
                 } catch (Throwable e) {
                     log.error("check hold request failed. topic={}, queueId={}", topic, queueId, e);
@@ -113,6 +116,8 @@ public class PullRequestHoldService extends ServiceThread {
         notifyMessageArriving(topic, queueId, maxOffset, null, 0, null, null);
     }
 
+    // 该方法是public的，除了本类中调用，还有NotifyMessageArrivingListener#arriving方法中进行了调用
+    // 也就是说，为了增加消息消费的实时性（开启长轮询时，PullRequestHoldService每隔5秒轮训），在ReputMessageService#doReput方法中，也会通过NotifyMessageArrivingListener#arriving进行调用
     public void notifyMessageArriving(final String topic, final int queueId, final long maxOffset, final Long tagsCode,
         long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
         String key = this.buildKey(topic, queueId);
@@ -124,11 +129,12 @@ public class PullRequestHoldService extends ServiceThread {
 
                 for (PullRequest request : requestList) {
                     long newestOffset = maxOffset;
-                    if (newestOffset <= request.getPullFromThisOffset()) {
+                    if (newestOffset <= request.getPullFromThisOffset()) { // 如果还是小于等于，则再尝试从MessageStore中获取一次消息
                         newestOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);
                     }
 
                     if (newestOffset > request.getPullFromThisOffset()) {
+                        // 消息过滤逻辑
                         boolean match = request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
                             new ConsumeQueueExt.CqExtUnit(tagsCode, msgStoreTime, filterBitMap));
                         // match by bit map, need eval again when properties is not null.
@@ -136,8 +142,9 @@ public class PullRequestHoldService extends ServiceThread {
                             match = request.getMessageFilter().isMatchedByCommitLog(null, properties);
                         }
 
-                        if (match) {
+                        if (match) { // 消息匹配
                             try {
+                                // 交给PullMessageProcessor处理
                                 this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
                                     request.getRequestCommand());
                             } catch (Throwable e) {

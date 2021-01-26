@@ -70,10 +70,17 @@ public class PullAPIWrapper {
 
     public PullResult processPullResult(final MessageQueue mq, final PullResult pullResult,
         final SubscriptionData subscriptionData) {
+        // 强转
         PullResultExt pullResultExt = (PullResultExt) pullResult;
-
+        // 更新broker端返回的建议brokerId,以便下次pullMessage时使用
         this.updatePullFromWhichNode(mq, pullResultExt.getSuggestWhichBrokerId());
         if (PullStatus.FOUND == pullResult.getPullStatus()) {
+
+            /*
+                下面这段代码的主要作用是将 消息byte[] 还原成List<MessageExt> msgFoundList;
+                并且根据tag进行了过滤，可见 tag 过滤是在消费端本地执行的而不是broker端
+             */
+
             ByteBuffer byteBuffer = ByteBuffer.wrap(pullResultExt.getMessageBinary());
             List<MessageExt> msgList = MessageDecoder.decodes(byteBuffer);
 
@@ -89,13 +96,14 @@ public class PullAPIWrapper {
                 }
             }
 
-            if (this.hasHook()) {
+            if (this.hasHook()) { // 回调FilterMessageHook的filterMessage方法
                 FilterMessageContext filterMessageContext = new FilterMessageContext();
                 filterMessageContext.setUnitMode(unitMode);
                 filterMessageContext.setMsgList(msgListFilterAgain);
                 this.executeHook(filterMessageContext);
             }
 
+            // 为消息补充额外信息
             for (MessageExt msg : msgListFilterAgain) {
                 String traFlag = msg.getProperty(MessageConst.PROPERTY_TRANSACTION_PREPARED);
                 if (Boolean.parseBoolean(traFlag)) {

@@ -638,10 +638,10 @@ public class DefaultMessageStore implements MessageStore {
 
             if (maxOffset == 0) {
                 status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
-                nextBeginOffset = nextOffsetCorrection(offset, 0);
+                nextBeginOffset = nextOffsetCorrection(offset, 0); // 下次偏移矫正为0
             } else if (offset < minOffset) {
                 status = GetMessageStatus.OFFSET_TOO_SMALL;
-                nextBeginOffset = nextOffsetCorrection(offset, minOffset);
+                nextBeginOffset = nextOffsetCorrection(offset, minOffset); // 矫正为minOffset
             } else if (offset == maxOffset) {
                 status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
                 nextBeginOffset = nextOffsetCorrection(offset, offset);
@@ -666,19 +666,21 @@ public class DefaultMessageStore implements MessageStore {
                         final boolean diskFallRecorded = this.messageStoreConfig.isDiskFallRecorded();
                         ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                         for (; i < bufferConsumeQueue.getSize() && i < maxFilterMessageCount; i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {
-                            long offsetPy = bufferConsumeQueue.getByteBuffer().getLong();
-                            int sizePy = bufferConsumeQueue.getByteBuffer().getInt();
-                            long tagsCode = bufferConsumeQueue.getByteBuffer().getLong();
+                            long offsetPy = bufferConsumeQueue.getByteBuffer().getLong(); // 物理偏移
+                            int sizePy = bufferConsumeQueue.getByteBuffer().getInt(); // 消息大小
+                            long tagsCode = bufferConsumeQueue.getByteBuffer().getLong(); // tagCode
 
                             maxPhyOffsetPulling = offsetPy;
 
-                            if (nextPhyFileStartOffset != Long.MIN_VALUE) {
+                            if (nextPhyFileStartOffset != Long.MIN_VALUE) { // 不等于Long.MIN_VALUE，表明可能查找的文件已经删除，所以nextPhyFileStartOffset直接跳转到下一个文件，此时如果消息还小于这个偏移量就可以直接跳过
                                 if (offsetPy < nextPhyFileStartOffset)
                                     continue;
                             }
 
+                            // commitlog最新的offset - 当前消息的offset 是否大于物理内存，判断是否在磁盘上
                             boolean isInDisk = checkInDiskByCommitOffset(offsetPy, maxOffsetPy);
 
+                            // 判断是否该批次满了，满了就停止获取消息
                             if (this.isTheBatchFull(sizePy, maxMsgNums, getResult.getBufferTotalSize(), getResult.getMessageCount(),
                                 isInDisk)) {
                                 break;
@@ -697,6 +699,7 @@ public class DefaultMessageStore implements MessageStore {
                                 }
                             }
 
+                            // 根据consumequeue过滤消息
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByConsumeQueue(isTagsCodeLegal ? tagsCode : null, extRet ? cqExtUnit : null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -706,6 +709,7 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
+                            // 根据偏移量和大小，获取实际消息
                             SelectMappedBufferResult selectResult = this.commitLog.getMessage(offsetPy, sizePy);
                             if (null == selectResult) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -716,6 +720,7 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
+                            // 根据commiltlog过滤消息
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByCommitLog(selectResult.getByteBuffer().slice(), null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -726,22 +731,27 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
+                            // 更新统计状态
                             this.storeStatsService.getGetMessageTransferedMsgCount().incrementAndGet();
+                            // 添加消息到result
                             getResult.addMessage(selectResult);
                             status = GetMessageStatus.FOUND;
-                            nextPhyFileStartOffset = Long.MIN_VALUE;
+                            nextPhyFileStartOffset = Long.MIN_VALUE; // offset重置为Long.MIN_VALUE
                         }
 
                         if (diskFallRecorded) {
-                            long fallBehind = maxOffsetPy - maxPhyOffsetPulling;
+                            long fallBehind = maxOffsetPy - maxPhyOffsetPulling; // 还有多少偏移量待消费
+                            // 记录待消费的偏移量
                             brokerStatsManager.recordDiskFallBehindSize(group, topic, queueId, fallBehind);
                         }
 
+                        // 下次拉取消息的开始偏移量（逻辑，consumequeue中的）
                         nextBeginOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
 
                         long diff = maxOffsetPy - maxPhyOffsetPulling;
                         long memory = (long) (StoreUtil.TOTAL_PHYSICAL_MEMORY_SIZE
                             * (this.messageStoreConfig.getAccessMessageInMemoryMaxRatio() / 100.0));
+                        // 如果待拉取的消息大于可用物理内存，说明下次拉取消息时还是有消息需要从磁盘拉取，则为了master节点的性能考虑，建议从slave节点拉取
                         getResult.setSuggestPullingFromSlave(diff > memory);
                     } finally {
 
@@ -1304,19 +1314,19 @@ public class DefaultMessageStore implements MessageStore {
             return false;
         }
 
-        if (maxMsgNums <= messageTotal) {
+        if (maxMsgNums <= messageTotal) { // 超过最大消息数量
             return true;
         }
 
-        if (isInDisk) {
+        if (isInDisk) { // 如果在磁盘上，要判断是否超过从磁盘传输数据的阈值
             if ((bufferTotal + sizePy) > this.messageStoreConfig.getMaxTransferBytesOnMessageInDisk()) {
                 return true;
             }
 
-            if (messageTotal > this.messageStoreConfig.getMaxTransferCountOnMessageInDisk() - 1) {
+            if (messageTotal > this.messageStoreConfig.getMaxTransferCountOnMessageInDisk() - 1) { // 磁盘一次最多拉8条消息
                 return true;
             }
-        } else {
+        } else { // 如果在内存上，则判断跟内存相关的阈值
             if ((bufferTotal + sizePy) > this.messageStoreConfig.getMaxTransferBytesOnMessageInMemory()) {
                 return true;
             }
@@ -2022,7 +2032,7 @@ public class DefaultMessageStore implements MessageStore {
                                     // 调度请求
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
 
-                                    // 不是slave节点，且启用了长轮询
+                                    // 不是slave节点，且启用了长轮询,消息到达时通知被挂起的PullMessage请求尝试进行消费
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
                                         && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
                                         DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),
