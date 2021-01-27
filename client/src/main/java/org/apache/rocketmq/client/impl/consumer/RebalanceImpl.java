@@ -336,6 +336,17 @@ public abstract class RebalanceImpl {
         }
     }
 
+    /**
+     * 主要思路：
+     * 1. 遍历当前负载队列集合，如果队列不在新分配队列集合中，需要将该队列停止消费并保存消费进度
+     * 2. 遍历已分配的队列，如果队列不在队列负载表中（processQueueTable）则需要创建该队列拉取任务PullRequest，然后添加到PullMessageService线程的pullRequestQueue中，
+     * PullMessageService才会继续拉取任务
+     *
+     * @param topic
+     * @param mqSet
+     * @param isOrder
+     * @return
+     */
     private boolean updateProcessQueueTableInRebalance(final String topic, final Set<MessageQueue> mqSet,
         final boolean isOrder) {
         boolean changed = false;
@@ -384,6 +395,7 @@ public abstract class RebalanceImpl {
 
                 this.removeDirtyOffset(mq);
                 ProcessQueue pq = new ProcessQueue();
+                // 计算从哪里开始消费，有多种模式可以配置 @see ConsumeFromWhere; 前提是读取到的消费进度为-1
                 long nextOffset = this.computePullFromWhere(mq);
                 if (nextOffset >= 0) {
                     ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq);

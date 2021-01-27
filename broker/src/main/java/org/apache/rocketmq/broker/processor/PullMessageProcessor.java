@@ -329,7 +329,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                 case OFFSET_OVERFLOW_ONE:
                     response.setCode(ResponseCode.PULL_NOT_FOUND);
                     break;
-                case OFFSET_TOO_SMALL:
+                case OFFSET_TOO_SMALL: // 状态流转： OFFSET_TOO_SMALL(GetMessageStatus) -> PULL_OFFSET_MOVED(ResponseCode) -> OFFSET_ILLEGAL(PullStatus)
                     response.setCode(ResponseCode.PULL_OFFSET_MOVED);
                     log.info("the request offset too small. group={}, topic={}, requestOffset={}, brokerMinOffset={}, clientIp={}",
                         requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueOffset(),

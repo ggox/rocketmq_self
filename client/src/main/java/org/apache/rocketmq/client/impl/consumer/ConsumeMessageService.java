@@ -16,10 +16,11 @@
  */
 package org.apache.rocketmq.client.impl.consumer;
 
-import java.util.List;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
+
+import java.util.List;
 
 public interface ConsumeMessageService {
     void start();
@@ -34,11 +35,13 @@ public interface ConsumeMessageService {
 
     int getCorePoolSize();
 
+    // 直接消费消息，主要通过管理命令收到消费消息
     ConsumeMessageDirectlyResult consumeMessageDirectly(final MessageExt msg, final String brokerName);
 
+    // 提交消息消费
     void submitConsumeRequest(
-        final List<MessageExt> msgs,
-        final ProcessQueue processQueue,
-        final MessageQueue messageQueue,
-        final boolean dispathToConsume);
+        final List<MessageExt> msgs, // 消息列表
+        final ProcessQueue processQueue, // 消息处理队列
+        final MessageQueue messageQueue, // 消息所属消费队列元信息
+        final boolean dispathToConsume); // 是否转发到消费线程池，并发消费时忽略
 }

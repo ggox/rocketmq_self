@@ -89,7 +89,7 @@ public class RebalancePushImpl extends RebalanceImpl {
         this.defaultMQPushConsumerImpl.getOffsetStore().persist(mq);
         this.defaultMQPushConsumerImpl.getOffsetStore().removeOffset(mq);
         if (this.defaultMQPushConsumerImpl.isConsumeOrderly()
-            && MessageModel.CLUSTERING.equals(this.defaultMQPushConsumerImpl.messageModel())) {
+            && MessageModel.CLUSTERING.equals(this.defaultMQPushConsumerImpl.messageModel())) { // 集群模式并且是顺序消费需要先解锁队列
             try {
                 if (pq.getLockConsume().tryLock(1000, TimeUnit.MILLISECONDS)) {
                     try {
@@ -166,7 +166,7 @@ public class RebalancePushImpl extends RebalanceImpl {
                         }
                     }
                 } else {
-                    result = -1;
+                    result = -1; // 如果消费进度小于-1，则使用-1去尝试拉取消息，本次拉取会无法获得消息，但是会触发更新消费进度并且将本地消费队列丢弃，待下次重平衡时再进行消费
                 }
                 break;
             }

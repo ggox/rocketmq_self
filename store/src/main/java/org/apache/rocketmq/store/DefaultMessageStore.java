@@ -316,6 +316,7 @@ public class DefaultMessageStore implements MessageStore {
 
         if (!messageStoreConfig.isEnableDLegerCommitLog()) {
             this.haService.start();
+            // 定时消息处理服务启动
             this.handleScheduleMessageService(messageStoreConfig.getBrokerRole());
         }
 
@@ -831,11 +832,13 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     public MessageExt lookMessageByOffset(long commitLogOffset) {
+        // 先读取前4个字节，得到消息的大小
         SelectMappedBufferResult sbr = this.commitLog.getMessage(commitLogOffset, 4);
         if (null != sbr) {
             try {
                 // 1 TOTALSIZE
                 int size = sbr.getByteBuffer().getInt();
+                // 再查询整个消息
                 return lookMessageByOffset(commitLogOffset, size);
             } finally {
                 sbr.release();

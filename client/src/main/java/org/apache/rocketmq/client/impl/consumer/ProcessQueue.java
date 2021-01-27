@@ -199,6 +199,7 @@ public class ProcessQueue {
         return 0;
     }
 
+    // 从msgTreeMap中移除消息，返回消费进度：队列中第一条消息的offset，如果队列为空，返回记录的最大消息offset+1
     public long removeMessage(final List<MessageExt> msgs) {
         long result = -1;
         final long now = System.currentTimeMillis();

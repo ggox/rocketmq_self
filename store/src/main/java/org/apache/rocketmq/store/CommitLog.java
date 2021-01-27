@@ -360,7 +360,7 @@ public class CommitLog {
                         }
 
                         if (delayLevel > 0) {
-                            // tagsode = 存储时间+延迟时间
+                            // tagsode = 存储时间+延迟时间 （延时到期时间）
                             tagsCode = this.defaultMessageStore.getScheduleMessageService().computeDeliverTimestamp(delayLevel,
                                 storeTimestamp);
                         }
