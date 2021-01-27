@@ -18,6 +18,14 @@
 package org.apache.rocketmq.broker.filtersrv;
 
 import io.netty.channel.Channel;
+import org.apache.rocketmq.broker.BrokerController;
+import org.apache.rocketmq.broker.BrokerStartup;
+import org.apache.rocketmq.common.ThreadFactoryImpl;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+import org.apache.rocketmq.remoting.common.RemotingUtil;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -27,13 +35,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.apache.rocketmq.broker.BrokerController;
-import org.apache.rocketmq.broker.BrokerStartup;
-import org.apache.rocketmq.common.ThreadFactoryImpl;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
-import org.apache.rocketmq.remoting.common.RemotingUtil;
 
 public class FilterServerManager {
 
@@ -52,6 +53,7 @@ public class FilterServerManager {
 
     public void start() {
 
+        // 每个30秒创建filterServer
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -64,11 +66,15 @@ public class FilterServerManager {
         }, 1000 * 5, 1000 * 30, TimeUnit.MILLISECONDS);
     }
 
+    // biz2cfm 好像这个方式4.3版本后已经不用了
     public void createFilterServer() {
+        // 根据broker配置的filterServer数量，启动filterServer进程
         int more =
             this.brokerController.getBrokerConfig().getFilterServerNums() - this.filterServerTable.size();
+        // 构建启动shell命令
         String cmd = this.buildStartCommand();
         for (int i = 0; i < more; i++) {
+            // 通过Runtime.getRuntime().exec执行命令
             FilterServerUtil.callShell(cmd, log);
         }
     }
