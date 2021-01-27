@@ -30,6 +30,7 @@ public class SubscriptionData implements Comparable<SubscriptionData> {
     public final static String SUB_ALL = "*";
     private boolean classFilterMode = false;
     private String topic;
+    // 消息过滤表达式，多个用"||"隔开，e.g. "tag1||tag2"
     private String subString;
     private Set<String> tagsSet = new HashSet<String>();
     private Set<Integer> codeSet = new HashSet<Integer>();

@@ -177,7 +177,7 @@ public abstract class RebalanceImpl {
             if (mqs.isEmpty())
                 continue;
 
-            // 找到broker信息
+            // 找到master broker信息
             FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(brokerName, MixAll.MASTER_ID, true);
             if (findBrokerResult != null) {
                 LockBatchRequestBody requestBody = new LockBatchRequestBody();
@@ -186,7 +186,7 @@ public abstract class RebalanceImpl {
                 requestBody.setMqSet(mqs);
 
                 try {
-                    // 批量锁定mq
+                    // 批量锁定mq,返回的是锁定成功的消费队列
                     Set<MessageQueue> lockOKMQSet =
                         this.mQClientFactory.getMQClientAPIImpl().lockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000);
 
@@ -197,10 +197,11 @@ public abstract class RebalanceImpl {
                                 log.info("the message queue locked OK, Group: {} {}", this.consumerGroup, mq);
                             }
 
-                            processQueue.setLocked(true);
+                            processQueue.setLocked(true); // 设置为锁定成功
                             processQueue.setLastLockTimestamp(System.currentTimeMillis());
                         }
                     }
+                    // 锁定失败的队列设置为false
                     for (MessageQueue mq : mqs) {
                         if (!lockOKMQSet.contains(mq)) {
                             ProcessQueue processQueue = this.processQueueTable.get(mq);
@@ -388,11 +389,12 @@ public abstract class RebalanceImpl {
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
         for (MessageQueue mq : mqSet) {
             if (!this.processQueueTable.containsKey(mq)) {
-                if (isOrder && !this.lock(mq)) {
+                // 如果是顺序消费则需要先lock队列
+                if (isOrder && !this.lock(mq)) { // 顺序消费和并发消费的第一个区别：顺序消费需要先在broker端锁定这个消费队列
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
                     continue;
                 }
-
+                // 移除无效的offset
                 this.removeDirtyOffset(mq);
                 ProcessQueue pq = new ProcessQueue();
                 // 计算从哪里开始消费，有多种模式可以配置 @see ConsumeFromWhere; 前提是读取到的消费进度为-1

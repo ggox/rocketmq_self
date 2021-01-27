@@ -282,7 +282,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 return;
             }
         } else {
-            // 处理队列是否被锁定了
+            // 顺序消费需要先判断这个待处理队列是否被锁定
             if (processQueue.isLocked()) {
                 if (!pullRequest.isLockedFirst()) { // 没有先锁定
                     // 计算从哪里开始拉取消息
@@ -1211,6 +1211,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         return queueTimeSpan;
     }
 
+    // 还原重试队列的消息
     public void resetRetryAndNamespace(final List<MessageExt> msgs, String consumerGroup) {
         final String groupTopic = MixAll.getRetryTopic(consumerGroup);
         for (MessageExt msg : msgs) {

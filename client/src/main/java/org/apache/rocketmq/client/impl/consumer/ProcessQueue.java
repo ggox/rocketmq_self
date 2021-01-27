@@ -71,7 +71,7 @@ public class ProcessQueue {
     private volatile boolean consuming = false;
     private volatile long msgAccCnt = 0;
 
-    // 判断是否锁定超时
+    // 判断是否锁定超时 一次锁定的有效期30秒，默认会每隔20秒进行一次加锁
     public boolean isLockExpired() {
         return (System.currentTimeMillis() - this.lastLockTimestamp) > REBALANCE_LOCK_MAX_LIVE_TIME;
     }
@@ -152,6 +152,7 @@ public class ProcessQueue {
                 }
                 msgCount.addAndGet(validMsgCnt);
 
+                // 消息不为空且当前不在消费中则dispatchToConsume置为true,表示允许将消费任务提交到消费线程（仅顺序消费有效）
                 if (!msgTreeMap.isEmpty() && !this.consuming) {
                     dispatchToConsume = true;
                     this.consuming = true;
@@ -330,6 +331,7 @@ public class ProcessQueue {
                         Map.Entry<Long, MessageExt> entry = this.msgTreeMap.pollFirstEntry();
                         if (entry != null) {
                             result.add(entry.getValue());
+                            // 顺序消费时会放入consumingMsgOrderlyTreeMap中
                             consumingMsgOrderlyTreeMap.put(entry.getKey(), entry.getValue());
                         } else {
                             break;
@@ -338,7 +340,7 @@ public class ProcessQueue {
                 }
 
                 if (result.isEmpty()) {
-                    consuming = false;
+                    consuming = false; // 表示消费结束
                 }
             } finally {
                 this.lockTreeMap.writeLock().unlock();
