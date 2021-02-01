@@ -19,6 +19,9 @@ package org.apache.rocketmq.remoting.common;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.Inet6Address;
@@ -31,8 +34,6 @@ import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.ArrayList;
 import java.util.Enumeration;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 public class RemotingUtil {
     public static final String OS_NAME = System.getProperty("os.name");
@@ -58,7 +59,7 @@ public class RemotingUtil {
     public static Selector openSelector() throws IOException {
         Selector result = null;
 
-        if (isLinuxPlatform()) {
+        if (isLinuxPlatform()) { // 如果是linux系统，尝试使用EPollSelectorProvider
             try {
                 final Class<?> providerClazz = Class.forName("sun.nio.ch.EPollSelectorProvider");
                 if (providerClazz != null) {
@@ -168,14 +169,14 @@ public class RemotingUtil {
         SocketChannel sc = null;
         try {
             sc = SocketChannel.open();
-            sc.configureBlocking(true);
-            sc.socket().setSoLinger(false, -1);
-            sc.socket().setTcpNoDelay(true);
-            sc.socket().setReceiveBufferSize(1024 * 64);
-            sc.socket().setSendBufferSize(1024 * 64);
+            sc.configureBlocking(true); // 阻塞模式
+            sc.socket().setSoLinger(false, -1);// 关闭TCP SO_LINGER
+            sc.socket().setTcpNoDelay(true); // 关闭 Nagle 算法，加快小包响应
+            sc.socket().setReceiveBufferSize(1024 * 64); // 接收缓冲区大小，64k
+            sc.socket().setSendBufferSize(1024 * 64); // 发送缓冲区大小，64k
             sc.socket().connect(remote, timeoutMillis);
-            sc.configureBlocking(false);
-            return sc;
+            sc.configureBlocking(false); // 连接成功后，修改为非阻塞模式
+            return sc; // return socketChannel
         } catch (Exception e) {
             if (sc != null) {
                 try {

@@ -975,13 +975,18 @@ public class CommitLog {
 
     public CompletableFuture<PutMessageStatus> submitReplicaRequest(AppendMessageResult result, PutMessageResult putMessageResult,
                                                         MessageExt messageExt) {
+        // 同步，切实master节点，需等待同步到slave节点才返回
         if (BrokerRole.SYNC_MASTER == this.defaultMessageStore.getMessageStoreConfig().getBrokerRole()) {
             HAService service = this.defaultMessageStore.getHaService();
+            // 在判断一下这个消息是不是要等待存储完成才ok
             if (messageExt.isWaitStoreMsgOK()) {
                 if (service.isSlaveOK(result.getWroteBytes() + result.getWroteOffset())) {
+                    // 封装request
                     GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes(),
                             this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout());
+                    // put到groupTransferService线程的任务处理队列中
                     service.putRequest(request);
+                    // 唤醒HaService
                     service.getWaitNotifyObject().wakeupAll();
                     return request.future();
                 }
@@ -990,6 +995,7 @@ public class CommitLog {
                 }
             }
         }
+        // 非同步模式直接complete
         return CompletableFuture.completedFuture(PutMessageStatus.PUT_OK);
     }
 
