@@ -16,11 +16,12 @@
  */
 package org.apache.rocketmq.client.producer;
 
-import java.util.concurrent.ExecutorService;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.protocol.NamespaceUtil;
 import org.apache.rocketmq.remoting.RPCHook;
+
+import java.util.concurrent.ExecutorService;
 
 public class TransactionMQProducer extends DefaultMQProducer {
     private TransactionCheckListener transactionCheckListener;
@@ -30,11 +31,13 @@ public class TransactionMQProducer extends DefaultMQProducer {
 
     private ExecutorService executorService;
 
+    // 事物监听器，包括：执行本地事物和回查本地事物状态两个接口，整合了原来的LocalTransactionExecuter和TransactionCheckListener
     private TransactionListener transactionListener;
 
     public TransactionMQProducer() {
     }
 
+    // 事物消息的producerGroup是有用的，回查事物消息时会从producerGroup中选取一个producer进行回查
     public TransactionMQProducer(final String producerGroup) {
         this(null, producerGroup, null);
     }

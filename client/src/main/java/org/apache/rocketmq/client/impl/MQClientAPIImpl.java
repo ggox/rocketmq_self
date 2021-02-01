@@ -1006,9 +1006,11 @@ public class MQClientAPIImpl {
         final String remark,
         final long timeoutMillis
     ) throws RemotingException, MQBrokerException, InterruptedException {
+        // requestCode END_TRANSACTION
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.END_TRANSACTION, requestHeader);
 
         request.setRemark(remark);
+        // 这里使用invokeOneWay,如果发送失败，会使用回查机制查询本地事物结果
         this.remotingClient.invokeOneway(addr, request, timeoutMillis);
     }
 
