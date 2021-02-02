@@ -265,6 +265,7 @@ public class BrokerController {
         if (result) {
             this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.clientHousekeepingService);
             NettyServerConfig fastConfig = (NettyServerConfig) this.nettyServerConfig.clone();
+            // vip通道
             fastConfig.setListenPort(nettyServerConfig.getListenPort() - 2);
             this.fastRemotingServer = new NettyRemotingServer(fastConfig, this.clientHousekeepingService);
             this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(
@@ -494,6 +495,7 @@ public class BrokerController {
             this.transactionalMessageService = new TransactionalMessageServiceImpl(new TransactionalMessageBridge(this, this.getMessageStore()));
             log.warn("Load default transaction message hook service: {}", TransactionalMessageServiceImpl.class.getSimpleName());
         }
+        // ServiceProvider：rocketmq自己实现的ServiceLoad机制
         this.transactionalMessageCheckListener = ServiceProvider.loadClass(ServiceProvider.TRANSACTION_LISTENER_ID, AbstractTransactionalMessageCheckListener.class);
         if (null == this.transactionalMessageCheckListener) {
             this.transactionalMessageCheckListener = new DefaultTransactionalMessageCheckListener();
@@ -1232,7 +1234,7 @@ public class BrokerController {
     }
 
     private void startProcessorByHa(BrokerRole role) {
-        if (BrokerRole.SLAVE != role) {
+        if (BrokerRole.SLAVE != role) { // 非从节点，启动transactionalMessageCheckService
             if (this.transactionalMessageCheckService != null) {
                 this.transactionalMessageCheckService.start();
             }

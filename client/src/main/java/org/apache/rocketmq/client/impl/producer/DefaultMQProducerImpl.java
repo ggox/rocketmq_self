@@ -324,6 +324,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         return null;
     }
 
+    // 事物状态回查
     @Override
     public void checkTransactionState(final String addr, final MessageExt msg,
         final CheckTransactionStateRequestHeader header) {
@@ -335,7 +336,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
             @Override
             public void run() {
+                // 兼容旧的api
                 TransactionCheckListener transactionCheckListener = DefaultMQProducerImpl.this.checkListener();
+                // 新的api
                 TransactionListener transactionListener = getCheckListener();
                 if (transactionCheckListener != null || transactionListener != null) {
                     LocalTransactionState localTransactionState = LocalTransactionState.UNKNOW;
@@ -371,6 +374,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 thisHeader.setCommitLogOffset(checkRequestHeader.getCommitLogOffset());
                 thisHeader.setProducerGroup(producerGroup);
                 thisHeader.setTranStateTableOffset(checkRequestHeader.getTranStateTableOffset());
+                // 标记为状态回查的返回
                 thisHeader.setFromTransactionCheck(true);
 
                 String uniqueKey = message.getProperties().get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
@@ -400,6 +404,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                     remark = "checkLocalTransactionState Exception: " + RemotingHelper.exceptionSimpleDesc(exception);
                 }
 
+                // 再次尝试endTransactionOneway
                 try {
                     DefaultMQProducerImpl.this.mQClientFactory.getMQClientAPIImpl().endTransactionOneway(brokerAddr, thisHeader, remark,
                         3000);
@@ -409,6 +414,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             }
         };
 
+        // 异步处理
         this.checkExecutor.submit(request);
     }
 
