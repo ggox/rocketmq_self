@@ -719,6 +719,7 @@ public class MQClientInstance {
                 consumerData.setConsumeType(impl.consumeType());
                 consumerData.setMessageModel(impl.messageModel());
                 consumerData.setConsumeFromWhere(impl.consumeFromWhere());
+                // 消费组订阅信息，在心跳包中传给broker端，broker端具体代码在 org.apache.rocketmq.broker.client.ConsumerManager.registerConsumer
                 consumerData.getSubscriptionDataSet().addAll(impl.subscriptions());
                 consumerData.setUnitMode(impl.isUnitMode());
 
